@@ -1,6 +1,6 @@
-# Agent instructions for `@supabase/auth-js`
+# Agent instructions for `@supabase/functions-js`
 
-Supabase Auth client SDK for JavaScript. Handles sign-in, sign-up, sessions, OAuth, MFA, and related auth flows.
+JavaScript SDK for invoking Supabase Edge Functions.
 
 When helping a user work with this package:
 

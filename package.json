@@ -1,17 +1,20 @@
 {
-  "name": "@supabase/auth-js",
+  "name": "@supabase/functions-js",
   "version": "2.117.3",
-  "private": false,
-  "description": "Official SDK for Supabase Auth",
+  "description": "JS SDK to interact with Supabase Functions.",
+  "main": "dist/main/index.js",
+  "module": "dist/module/index.js",
+  "types": "dist/module/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/supabase/supabase-js.git",
+    "directory": "packages/core/functions-js"
+  },
   "keywords": [
-    "auth",
-    "supabase",
-    "auth",
-    "authentication"
+    "functions",
+    "supabase"
   ],
-  "homepage": "https://github.com/supabase/supabase-js/tree/master/packages/core/auth-js",
-  "bugs": "https://github.com/supabase/supabase-js/issues",
-  "license": "MIT",
   "author": "Supabase",
   "files": [
     "dist",
@@ -19,30 +22,30 @@
     "migrations",
     "AGENTS.md"
   ],
-  "main": "dist/main/index.js",
-  "module": "dist/module/index.js",
-  "types": "dist/module/index.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/supabase/supabase-js.git",
-    "directory": "packages/core/auth-js"
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/supabase/supabase-js/issues"
   },
+  "homepage": "https://github.com/supabase/supabase-js/tree/master/packages/core/functions-js",
   "dependencies": {
     "tslib": "2.8.1"
   },
   "devDependencies": {
-    "@faker-js/faker": "^9.9.0",
+    "@jest/types": "^30.0.0",
     "@types/jest": "30.0.0",
     "@types/jsonwebtoken": "^8.5.8",
     "@types/node": "20.19.9",
     "jest": "30.4.2",
-    "jest-environment-jsdom": "30.4.1",
-    "jest-mock-server": "^0.1.0",
     "jsonwebtoken": "^9.0.0",
-    "prettier": "^3.6.2",
+    "nanoid": "^3.3.17",
+    "openai": "^4.52.5",
+    "testcontainers": "^8.5.1",
     "ts-jest": "^29.4.9",
     "typedoc": "^0.27.9",
     "typescript": "~5.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -51,7 +54,9 @@
     "build": "npm run build:main && npm run build:module",
     "build:main": "tsc -p tsconfig.json",
     "build:module": "tsc -p tsconfig.module.json",
-    "docs": "typedoc --options ../../../typedoc.base.mjs src/index.ts --out docs/v2 --excludePrivate --excludeProtected",
-    "docs:json": "typedoc --options ../../../typedoc.base.mjs --json docs/v2/spec.json --excludeExternals --excludePrivate --excludeProtected src/index.ts"
+    "docs": "typedoc --options ../../../typedoc.base.mjs src/index.ts --out docs/v2",
+    "docs:json": "typedoc --options ../../../typedoc.base.mjs --json docs/v2/spec.json --excludeExternals src/index.ts",
+    "test": "jest",
+    "test:ci": "jest --coverage"
   }
 }

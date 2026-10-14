@@ -1,13 +1,10 @@
-import GoTrueAdminApi from './GoTrueAdminApi'
-import GoTrueClient from './GoTrueClient'
-import AuthAdminApi from './AuthAdminApi'
-import AuthClient from './AuthClient'
-export { GoTrueAdminApi, GoTrueClient, AuthAdminApi, AuthClient }
-export * from './lib/types'
-export * from './lib/errors'
+export { FunctionsClient } from './FunctionsClient'
 export {
-  navigatorLock,
-  NavigatorLockAcquireTimeoutError,
-  internals as lockInternals,
-  processLock,
-} from './lib/locks'
+  type FunctionInvokeOptions,
+  FunctionsError,
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+  FunctionRegion,
+  type FunctionsResponse,
+} from './types'

@@ -8,25 +8,25 @@
     </picture>
   </a>
 
-  <h1 align="center">Supabase Auth JS SDK</h1>
+  <h1 align="center">Supabase Functions JS SDK</h1>
 
-  <h3 align="center">An isomorphic JavaScript SDK for the <a href="https://github.com/supabase/auth">Supabase Auth</a> API.</h3>
+  <h3 align="center">JavaScript SDK to interact with Supabase Edge Functions.</h3>
 
   <p align="center">
-    <a href="https://supabase.com/docs/guides/auth">Guides</a>
+    <a href="https://supabase.com/docs/guides/functions">Guides</a>
     ·
-    <a href="https://supabase.com/docs/reference/javascript/auth-signup">Reference Docs</a>
+    <a href="https://supabase.com/docs/reference/javascript/functions-invoke">Reference Docs</a>
     ·
-    <a href="https://supabase.github.io/supabase-js/auth-js/v2/spec.json">TypeDoc</a>
+    <a href="https://supabase.github.io/supabase-js/functions-js/v2/spec.json">TypeDoc</a>
   </p>
 </p>
 
 <div align="center">
 
 [![Build](https://github.com/supabase/supabase-js/workflows/CI/badge.svg)](https://github.com/supabase/supabase-js/actions?query=branch%3Amaster)
-[![Package](https://img.shields.io/npm/v/@supabase/auth-js)](https://www.npmjs.com/package/@supabase/auth-js)
+[![Package](https://img.shields.io/npm/v/@supabase/functions-js)](https://www.npmjs.com/package/@supabase/functions-js)
 [![License: MIT](https://img.shields.io/npm/l/@supabase/supabase-js)](#license)
-[![pkg.pr.new](https://pkg.pr.new/badge/supabase/auth-js)](https://pkg.pr.new/~/supabase/auth-js)
+[![pkg.pr.new](https://pkg.pr.new/badge/supabase/functions-js)](https://pkg.pr.new/~/supabase/functions-js)
 
 </div>
 
@@ -43,38 +43,32 @@
 >
 > Node.js 20 reached end-of-life on April 30, 2026. As announced in [our deprecation notice](https://github.com/orgs/supabase/discussions/45715), support for Node.js 20 was dropped in v2.110.0.
 
-## Quick start
+## Quick Start
 
-Install
+### Installation
 
 ```bash
-npm install --save @supabase/auth-js
+npm install @supabase/functions-js
 ```
 
-Usage
+### Usage
 
 ```js
-import { AuthClient } from '@supabase/auth-js'
+import { FunctionsClient } from '@supabase/functions-js'
 
-const GOTRUE_URL = 'http://localhost:9999'
+const functionsUrl = 'https://<project_ref>.supabase.co/functions/v1'
+const publishableKey = '<publishable_key>'
 
-const auth = new AuthClient({ url: GOTRUE_URL })
-```
+const functions = new FunctionsClient(functionsUrl, {
+  headers: {
+    Authorization: `Bearer ${publishableKey}`,
+  },
+})
 
-- `signUp()`: https://supabase.com/docs/reference/javascript/auth-signup
-- `signIn()`: https://supabase.com/docs/reference/javascript/auth-signin
-- `signOut()`: https://supabase.com/docs/reference/javascript/auth-signout
-
-### Custom `fetch` implementation
-
-`auth-js` uses the runtime's global `fetch` to make HTTP requests, but an alternative `fetch` implementation can be provided as an option. This is useful in environments where the global `fetch` is unavailable or where you want to customize request behavior:
-
-```js
-import { AuthClient } from '@supabase/auth-js'
-
-const AUTH_URL = 'http://localhost:9999'
-
-const auth = new AuthClient({ url: AUTH_URL, fetch: fetch })
+// Invoke a function
+const { data, error } = await functions.invoke('hello-world', {
+  body: { name: 'Functions' },
+})
 ```
 
 ## Development
@@ -85,19 +79,19 @@ This package is part of the [Supabase JavaScript monorepo](https://github.com/su
 
 ```bash
 # Complete build (from monorepo root)
-pnpm nx build auth-js
+pnpm nx build functions-js
 
 # Build with watch mode for development
-pnpm nx build auth-js --watch
+pnpm nx build functions-js --watch
 
 # Individual build targets
-pnpm nx build:main auth-js    # CommonJS build (dist/main/)
-pnpm nx build:module auth-js  # ES Modules build (dist/module/)
+pnpm nx build:main functions-js    # CommonJS build (dist/main/)
+pnpm nx build:module functions-js  # ES Modules build (dist/module/)
 
 # Other useful commands
-pnpm nx lint auth-js          # Run ESLint
-pnpm nx typecheck auth-js     # TypeScript type checking
-pnpm nx docs auth-js          # Generate documentation
+pnpm nx clean functions-js         # Clean build artifacts
+pnpm nx typecheck functions-js     # TypeScript type checking
+pnpm nx docs functions-js          # Generate documentation
 ```
 
 #### Build Outputs
@@ -108,84 +102,34 @@ pnpm nx docs auth-js          # Generate documentation
 
 ### Testing
 
-The auth-js package has two test suites:
-
-1. **CLI Tests** - Main test suite using Supabase CLI (331 tests)
-2. **Docker Tests** - Edge case tests requiring specific GoTrue configurations (11 tests)
-
-#### Prerequisites
-
-- **Supabase CLI** - Required for main test suite ([installation guide](https://supabase.com/docs/guides/cli))
-- **Docker** - Required for edge case tests
-
-#### Running Tests
+**Docker Required** for relay tests. The functions-js tests use testcontainers to spin up a Deno relay server for testing Edge Function invocations.
 
 ```bash
-# Run main test suite with Supabase CLI (recommended)
-pnpm nx test:auth auth-js
+# Run all tests (from monorepo root)
+pnpm nx test functions-js
 
-# Run Docker-only edge case tests
-pnpm nx test:docker auth-js
+# Run tests with coverage report
+pnpm nx test functions-js --coverage
 
-# Run both test suites
-pnpm nx test:auth auth-js && pnpm nx test:docker auth-js
+# Run tests in watch mode during development
+pnpm nx test functions-js --watch
+
+# CI test command (runs with coverage)
+pnpm nx test:ci functions-js
 ```
 
-#### Main Test Suite (Supabase CLI)
+#### Test Requirements
 
-The `test:auth` command automatically:
+- **Node.js 22+** - Required for testcontainers
+- **Docker** - Must be installed and running for relay tests
+- No Supabase instance needed - Tests use mocked services and testcontainers
 
-1. Stops any existing Supabase instance
-2. Starts a local Supabase instance via CLI
-3. Runs the test suite (excludes `docker-tests/` folder)
-4. Cleans up after tests complete
+#### What Gets Tested
 
-```bash
-# Individual commands for manual control
-pnpm nx test:infra auth-js    # Start Supabase CLI
-pnpm nx test:suite auth-js    # Run tests only
-pnpm nx test:clean-post auth-js  # Stop Supabase CLI
-```
-
-#### Docker Tests (Edge Cases)
-
-The `test:docker` target runs tests that require specific GoTrue configurations not possible with a single Supabase CLI instance:
-
-- **Signup disabled** - Tests for disabled signup functionality
-- **Asymmetric JWT (RS256)** - Tests for RS256 JWT verification
-- **Phone OTP / SMS** - Tests requiring Twilio SMS provider
-- **Anonymous sign-in disabled** - Tests for disabled anonymous auth
-
-These tests are located in `test/docker-tests/` and use the Docker Compose setup in `infra/docker-compose.yml`.
-
-```bash
-# Individual commands for manual control
-pnpm nx test:docker:infra auth-js    # Start Docker containers
-pnpm nx test:docker:suite auth-js    # Run Docker tests only
-pnpm nx test:docker:clean-post auth-js  # Stop Docker containers
-```
-
-#### Development Testing
-
-For actively developing and debugging tests:
-
-```bash
-# Start Supabase CLI once
-pnpm nx test:infra auth-js
-
-# Run tests multiple times (faster since instance stays up)
-pnpm nx test:suite auth-js
-
-# Clean up when done
-pnpm nx test:clean-post auth-js
-```
-
-#### Test Infrastructure
-
-| Suite        | Infrastructure | Configuration               |
-| ------------ | -------------- | --------------------------- |
-| CLI Tests    | Supabase CLI   | `test/supabase/config.toml` |
-| Docker Tests | Docker Compose | `infra/docker-compose.yml`  |
+- **Function invocation** - Testing the `invoke()` method with various options
+- **Relay functionality** - Using a containerized Deno relay to test real Edge Function scenarios
+- **Error handling** - Ensuring proper error responses and retries
+- **Request/response models** - Validating headers, body, and response formats
 
 ### Contributing
 
