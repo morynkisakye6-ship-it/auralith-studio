@@ -1,6 +1,6 @@
-# Agent instructions for `@supabase/functions-js`
+# Agent instructions for `@supabase/postgrest-js`
 
-JavaScript SDK for invoking Supabase Edge Functions.
+Isomorphic PostgREST client for database operations (select, insert, update, upsert, delete, filters, RPC).
 
 When helping a user work with this package:
 

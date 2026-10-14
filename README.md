@@ -1,119 +1,213 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./priv/static/phoenix-orange.png" />
-  <source media="(prefers-color-scheme: light)" srcset="./priv/static/phoenix.png" />
-  <img src="./priv/static/phoenix.png" alt="Phoenix logo" />
-</picture>
+<br />
+<p align="center">
+  <a href="https://supabase.io">
+        <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/supabase-logo-wordmark--dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/supabase-logo-wordmark--light.svg">
+      <img alt="Supabase Logo" width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/logo-preview.jpg">
+    </picture>
+  </a>
 
-> Peace of mind from prototype to production.
+  <h1 align="center">Supabase PostgREST JS SDK</h1>
 
-[![Build Status](https://github.com/supabase/phoenix/workflows/CI/badge.svg)](https://github.com/supabase/phoenix/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/@supabase/phoenix.svg)](https://www.npmjs.com/package/@supabase/phoenix)
+  <h3 align="center">Isomorphic JavaScript SDK for <a href="https://postgrest.org">PostgREST</a> with an ORM-like interface.</h3>
 
-## Supabase Fork
+  <p align="center">
+    <a href="https://supabase.com/docs/guides/database">Guides</a>
+    ·
+    <a href="https://supabase.com/docs/reference/javascript/select">Reference Docs</a>
+    ·
+    <a href="https://supabase.github.io/supabase-js/postgrest-js/v2/spec.json">TypeDoc</a>
+  </p>
+</p>
 
-This is a Supabase fork of Phoenix Framework, published to npm as `@supabase/phoenix`.
+<div align="center">
 
-**Installation:**
-```bash
-npm install @supabase/phoenix
-```
+[![Build](https://github.com/supabase/supabase-js/workflows/CI/badge.svg)](https://github.com/supabase/supabase-js/actions?query=branch%3Amaster)
+[![Package](https://img.shields.io/npm/v/@supabase/postgrest-js)](https://www.npmjs.com/package/@supabase/postgrest-js)
+[![License: MIT](https://img.shields.io/npm/l/@supabase/supabase-js)](#license)
+[![pkg.pr.new](https://pkg.pr.new/badge/supabase/postgrest-js)](https://pkg.pr.new/~/supabase/postgrest-js)
 
-**Releases**: This fork uses automated releases via [release-please](https://github.com/googleapis/release-please). See [RELEASE.md](RELEASE.md) for details.
+</div>
 
-**Upstream**: Based on [phoenixframework/phoenix](https://github.com/phoenixframework/phoenix)
+### Quick start
 
-## Versioning
-
-This package uses **independent semantic versioning** for the JavaScript client.
-
-- **Based on**: Phoenix Framework 1.8.3 JS client
-- **Last synced**: 2026-07-09
-
-We version based on **JS API changes only**, not upstream Phoenix framework releases.
-When we merge upstream Phoenix changes, we evaluate the JS API impact and version accordingly.
-
-## Getting started
-
-See the official site at <https://www.phoenixframework.org/>.
-
-Install the latest version of Phoenix by following the instructions at <https://phoenix.hexdocs.pm/installation.html#phoenix>.
-
-## Documentation
-
-API documentation is available at <https://phoenix.hexdocs.pm>.
-
-Phoenix.js documentation is available at <https://phoenix.hexdocs.pm/js>.
-
-## Contributing
-
-We appreciate any contribution to Phoenix. Check our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and [CONTRIBUTING.md](CONTRIBUTING.md) guides for more information. We usually keep a list of features and bugs in the [issue tracker][4].
-
-### Generating a Phoenix project from unreleased versions
-
-You can create a new project using the latest Phoenix source installer (the `phx.new` Mix task) with the following steps:
-
-1. Remove any previously installed `phx_new` archives so that Mix will pick up the local source code. This can be done with `mix archive.uninstall phx_new` or by simply deleting the file, which is usually in `~/.mix/archives/`.
-2. Copy this repo via `git clone https://github.com/phoenixframework/phoenix` or by downloading it
-3. Run the `phx.new` Mix task from within the `installer` directory, for example:
+Install
 
 ```bash
-cd phoenix/installer
-mix phx.new dev_app --dev
+npm install @supabase/postgrest-js
 ```
 
-The `--dev` flag will configure your new project's `:phoenix` dep as a relative path dependency, pointing to your local Phoenix checkout:
+Usage
 
-```elixir
-defp deps do
-  [{:phoenix, path: "../..", override: true},
+```js
+import { PostgrestClient } from '@supabase/postgrest-js'
+
+const REST_URL = 'http://localhost:3000'
+const postgrest = new PostgrestClient(REST_URL)
 ```
 
-To create projects outside of the `installer/` directory, add the latest archive to your machine by following the instructions in [installer/README.md](https://github.com/phoenixframework/phoenix/blob/main/installer/README.md)
+- [select()](https://supabase.com/docs/reference/javascript/select)
+- [insert()](https://supabase.com/docs/reference/javascript/insert)
+- [update()](https://supabase.com/docs/reference/javascript/update)
+- [delete()](https://supabase.com/docs/reference/javascript/delete)
 
-### Building from source
+#### Custom `fetch` implementation
 
-To build the documentation:
+`postgrest-js` uses the runtime's global `fetch` to make HTTP requests, but an alternative `fetch` implementation can be provided as an option. This is useful in environments where the global `fetch` is unavailable or where you want to customize request behavior:
+
+```js
+import { PostgrestClient } from '@supabase/postgrest-js'
+
+const REST_URL = 'http://localhost:3000'
+const postgrest = new PostgrestClient(REST_URL, {
+  fetch: (...args) => fetch(...args),
+})
+```
+
+## Development
+
+This package is part of the [Supabase JavaScript monorepo](https://github.com/supabase/supabase-js). To work on this package:
+
+### Building
 
 ```bash
-MIX_ENV=docs mix docs
+# Build (from monorepo root)
+pnpm nx build postgrest-js
+
+# Build with watch mode for development
+pnpm nx build:watch postgrest-js
+
+# TypeScript type checking
+pnpm nx type-check postgrest-js
+
+# Generate documentation
+pnpm nx docs postgrest-js
 ```
 
-To build Phoenix:
+### Testing
+
+**Supabase CLI Required!** The `postgrest-js` tests use the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) to run a local PostgreSQL database and PostgREST server.
+
+#### Quick Start
 
 ```bash
-mix deps.get
-mix compile
+# Run all tests (from monorepo root)
+pnpm nx test:ci:postgrest postgrest-js
 ```
 
-To build the Phoenix installer:
+This single command automatically:
+
+1. Stops any existing Supabase CLI containers
+2. Starts PostgreSQL database and PostgREST server via Supabase CLI
+3. Resets and seeds the database
+4. Runs all Jest unit tests with coverage
+5. Cleans up containers
+
+#### Individual Test Commands
 
 ```bash
-mix deps.get
-mix compile
-mix archive.build
+# Run Jest tests with coverage (requires infrastructure running)
+pnpm nx test:run postgrest-js
+
+# Run type tests with tstyche
+pnpm nx test:types postgrest-js
+
+# Run smoke tests (CommonJS and ESM imports)
+pnpm nx test:smoke postgrest-js
+
+# Format code
+pnpm nx format postgrest-js
+
+# Check formatting
+pnpm nx format:check postgrest-js
 ```
 
-To build Phoenix.js:
+#### Test Infrastructure
+
+The tests use Supabase CLI to spin up:
+
+- **PostgreSQL** - Database with test schema and seed data (port 54322)
+- **PostgREST** - REST API server that the client connects to (port 54321)
 
 ```bash
-mix assets.build
+# Manually manage test infrastructure (from monorepo root)
+pnpm nx test:infra postgrest-js      # Start containers
+pnpm nx test:clean-pre postgrest-js  # Stop and remove containers
 ```
 
-## Important links
+Or directly via Supabase CLI:
 
-* [#elixir][1] on [Libera][2] IRC
-* [elixir-lang Slack channel][3]
-* [Issues tracker][4]
-* [Phoenix Forum (questions and proposals)][5]
-* Visit Phoenix's sponsor, DockYard, for expert [Phoenix Consulting](https://dockyard.com/phoenix-consulting)
+```bash
+cd packages/core/postgrest-js
+npx supabase --workdir ./test start        # Start all services
+npx supabase --workdir ./test db reset     # Reset and seed database
+npx supabase --workdir ./test stop         # Stop all services
+```
 
-  [1]: https://web.libera.chat/?channels=#elixir
-  [2]: https://libera.chat/
-  [3]: https://elixir-lang.slack.com/
-  [4]: https://github.com/phoenixframework/phoenix/issues
-  [5]: https://elixirforum.com/c/phoenix-forum
+#### Regenerating TypeScript Types
 
-## Copyright and License
+When the database schema changes, regenerate TypeScript types from the actual database:
 
-Copyright (c) 2014, Chris McCord.
+```bash
+# From the monorepo root
+pnpm run codegen:postgrest
+```
 
-Phoenix source code is licensed under the [MIT License](LICENSE.md).
+This command automatically:
+
+1. Cleans up any existing Supabase containers
+2. Starts Supabase (PostgreSQL, PostgREST, and all services)
+3. Generates TypeScript types from the database schema
+4. Post-processes the generated types (updates JSON type definitions)
+5. Formats the generated file with Prettier
+6. Cleans up Supabase containers
+
+The generated types are written to `test/types.generated.ts`.
+
+#### Test Types Explained
+
+- **Unit Tests** - Jest tests covering all client functionality (`pnpm nx test:run postgrest-js`)
+- **Type Tests** - Validates TypeScript types using tstyche (`pnpm nx test:types postgrest-js`)
+- **Smoke Tests** - Basic import/require tests for CommonJS and ESM (`pnpm nx test:smoke postgrest-js`)
+
+#### Prerequisites
+
+- **Supabase CLI** must be installed ([instructions](https://supabase.com/docs/guides/local-development/cli/getting-started)) or can be used through `npx` (`npx supabase`)
+- **Docker** must be installed and running (Supabase CLI uses Docker under the hood)
+- **Port 54321** - PostgREST API
+- **Port 54322** - PostgreSQL database
+- **Port 54323** - Supabase Studio (used for type generation)
+
+#### PostgREST v12 Backward Compatibility Tests
+
+We maintain backward compatibility tests for PostgREST v12 (the current Supabase CLI uses v14+). These tests ensure the SDK works correctly for users still running older PostgREST versions.
+
+```bash
+# Run v12 compatibility tests (requires Docker)
+pnpm nx test:ci:v12 postgrest-js
+```
+
+This command:
+
+1. Starts PostgREST v12 + PostgreSQL in Docker (ports 3012/5433)
+2. Runs runtime tests that verify v12-specific behavior
+3. Cleans up containers
+
+**Type-only tests** for v12 compatibility also run as part of the regular type tests:
+
+```bash
+pnpm nx test:types postgrest-js  # Includes v12-compat.test-d.ts
+```
+
+**Note:** These v12 tests will be removed when v3 ships (sometime in 2026).
+
+### Contributing
+
+We welcome contributions! Please see our [Contributing Guide](../../../CONTRIBUTING.md) for details on how to get started.
+
+For major changes or if you're unsure about something, please open an issue first to discuss your proposed changes.
+
+## License
+
+This repo is licensed under MIT License.

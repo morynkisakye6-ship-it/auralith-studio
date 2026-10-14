@@ -1,55 +1,77 @@
 {
-  "name": "@supabase/phoenix",
-  "version": "0.4.5",
-  "description": "The official JavaScript client for the Phoenix web framework.",
+  "name": "@supabase/postgrest-js",
+  "version": "2.117.3",
+  "description": "Isomorphic PostgREST client",
+  "keywords": [
+    "postgrest",
+    "supabase"
+  ],
+  "homepage": "https://github.com/supabase/supabase-js/tree/master/packages/core/postgrest-js",
+  "bugs": "https://github.com/supabase/supabase-js/issues",
   "license": "MIT",
-  "module": "./priv/static/phoenix.mjs",
-  "main": "./priv/static/phoenix.cjs.js",
-  "types": "./priv/static/types/index.d.ts",
-  "unpkg": "./priv/static/phoenix.min.js",
-  "jsdelivr": "./priv/static/phoenix.min.js",
+  "author": "Supabase",
+  "files": [
+    "dist",
+    "src",
+    "migrations",
+    "AGENTS.md"
+  ],
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
   "exports": {
-    "import": {
-      "types": "./priv/static/types/index.d.ts",
-      "default": "./priv/static/phoenix.mjs"
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
-    "require": {
-      "types": "./priv/static/types/index.d.ts",
-      "default": "./priv/static/phoenix.cjs.js"
-    }
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/supabase/phoenix.git"
+    "url": "https://github.com/supabase/supabase-js.git",
+    "directory": "packages/core/postgrest-js"
   },
-  "author": "Chris McCord <chris@chrismccord.com> (https://www.phoenixframework.org)",
-  "files": [
-    "README.md",
-    "LICENSE.md",
-    "package.json",
-    "tsconfig.json",
-    "priv/static/*",
-    "assets/js/phoenix/*"
-  ],
+  "dependencies": {
+    "tslib": "2.8.1"
+  },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@stylistic/eslint-plugin": "^5.0.0",
-    "documentation": "^14.0.3",
-    "eslint": "10.6.0",
-    "eslint-plugin-jest": "29.15.4",
-    "jest": "^30.0.0",
-    "jest-environment-jsdom": "^30.0.0",
-    "jsdom": "^29.0.1",
-    "mock-socket": "^9.3.1",
-    "typescript": "^5.9.3"
+    "@jest/types": "^30.0.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "20.19.9",
+    "chokidar-cli": "^3.0.0",
+    "jest": "30.4.2",
+    "prettier": "^3.6.2",
+    "ts-jest": "^29.4.9",
+    "tsdown": "^0.18.0",
+    "tstyche": "^4.3.0",
+    "type-fest": "^4.32.0",
+    "typedoc": "^0.27.9",
+    "typescript": "~5.8.3",
+    "zod": "^3.25.76"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "scripts": {
-    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
-    "test.coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
-    "test.watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
-    "build.types": "tsc",
-    "docs": "documentation build assets/js/phoenix/index.js -f html -o doc/js",
-    "lint": "eslint assets",
-    "lint:fix": "eslint --fix assets"
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "format": "node scripts/format.js",
+    "format:check": "node scripts/format.js check",
+    "docs": "typedoc --options ../../../typedoc.base.mjs src/index.ts --out docs/v2",
+    "docs:json": "typedoc --options ../../../typedoc.base.mjs --json docs/v2/spec.json --excludeExternals src/index.ts",
+    "test:run": "jest --runInBand --coverage -u",
+    "test:smoke": "node test/smoke.cjs && node test/smoke.mjs",
+    "test:types": "tstyche",
+    "test:types:ci": "tstyche --target '4.7,5.5,6.0'",
+    "test:types:watch": "chokidar 'src/**/*.ts' 'test/**/*.ts' -c 'npm run test:types'",
+    "type-check": "tsc --noEmit --project tsconfig.json",
+    "type-check:test": "tsc --noEmit --project tsconfig.test.json"
   }
 }
