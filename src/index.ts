@@ -1,61 +1,19 @@
-import RealtimeClient, {
-  RealtimeClientOptions,
-  RealtimeMessage,
-  RealtimeRemoveChannelResponse,
-  WebSocketLikeConstructor,
-} from './RealtimeClient'
-import RealtimeChannel, {
-  RealtimeChannelOptions,
-  RealtimeChannelSendResponse,
-  RealtimePostgresChangesFilter,
-  RealtimePostgresChangesFilterOperator,
-  RealtimePostgresFilterBuilder,
-  postgresChangesFilter,
-  RealtimePostgresChangesPayload,
-  RealtimePostgresInsertPayload,
-  RealtimePostgresUpdatePayload,
-  RealtimePostgresDeletePayload,
-  RealtimeSystemPayload,
-  REALTIME_LISTEN_TYPES,
-  REALTIME_POSTGRES_CHANGES_LISTEN_EVENT,
-  REALTIME_SUBSCRIBE_STATES,
-  REALTIME_CHANNEL_STATES,
-} from './RealtimeChannel'
-import RealtimePresence, {
-  RealtimePresenceState,
-  RealtimePresenceJoinPayload,
-  RealtimePresenceLeavePayload,
-  REALTIME_PRESENCE_LISTEN_EVENTS,
-} from './RealtimePresence'
-import WebSocketFactory, { WebSocketLike } from './lib/websocket-factory'
+export { StorageClient } from './StorageClient'
+export type { StorageClientOptions } from './StorageClient'
+export { default as StorageAnalyticsClient } from './packages/StorageAnalyticsClient'
 
+// Vector Storage
 export {
-  RealtimePresence,
-  RealtimeChannel,
-  RealtimeChannelOptions,
-  RealtimeChannelSendResponse,
-  RealtimeClient,
-  RealtimeClientOptions,
-  RealtimeMessage,
-  RealtimePostgresChangesFilter,
-  RealtimePostgresChangesFilterOperator,
-  RealtimePostgresFilterBuilder,
-  postgresChangesFilter,
-  RealtimePostgresChangesPayload,
-  RealtimePostgresInsertPayload,
-  RealtimePostgresUpdatePayload,
-  RealtimePostgresDeletePayload,
-  RealtimeSystemPayload,
-  RealtimePresenceJoinPayload,
-  RealtimePresenceLeavePayload,
-  RealtimePresenceState,
-  RealtimeRemoveChannelResponse,
-  REALTIME_LISTEN_TYPES,
-  REALTIME_POSTGRES_CHANGES_LISTEN_EVENT,
-  REALTIME_PRESENCE_LISTEN_EVENTS,
-  REALTIME_SUBSCRIBE_STATES,
-  REALTIME_CHANNEL_STATES,
-  WebSocketFactory,
-  WebSocketLike,
-  WebSocketLikeConstructor,
-}
+  StorageVectorsClient,
+  VectorBucketScope,
+  VectorIndexScope,
+} from './packages/StorageVectorsClient'
+export type { StorageVectorsClientOptions } from './packages/StorageVectorsClient'
+export { default as VectorBucketApi } from './packages/VectorBucketApi'
+export { default as VectorDataApi } from './packages/VectorDataApi'
+export { default as VectorIndexApi } from './packages/VectorIndexApi'
+export type { CreateIndexOptions } from './packages/VectorIndexApi'
+
+// Types and Errors
+export * from './lib/types'
+export * from './lib/common/errors'

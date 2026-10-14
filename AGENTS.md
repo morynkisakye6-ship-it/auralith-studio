@@ -1,6 +1,6 @@
-# Agent instructions for `@supabase/realtime-js`
+# Agent instructions for `@supabase/storage-js`
 
-Listen to realtime updates from a Supabase PostgreSQL database. Handles channels, presence, broadcast, and Postgres CDC subscriptions.
+Isomorphic storage client for Supabase. Handles bucket and object operations: upload, download, list, signed URLs, transformations.
 
 When helping a user work with this package:
 

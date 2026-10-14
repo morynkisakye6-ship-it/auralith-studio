@@ -1,5326 +1,3394 @@
-//#region src/PostgrestError.d.ts
+import { IcebergError, IcebergRestCatalog } from "iceberg-js";
+
+//#region src/lib/common/errors.d.ts
+
 /**
- * Error format
- *
- * Returned by every PostgREST request that fails. When something fails, the
- * single most useful field is usually `hint` — Postgres often returns the
- * actionable fix there, not in `message`. Always log the full object (e.g.
- * `console.error(error)`); logging only `error.message` hides the hint.
- *
- * Read the fields in roughly this order of usefulness:
- *
- * - `hint` — actionable guidance from the database when available. For
- *   permission-denied errors (`42501`), this is the literal SQL to fix the
- *   problem, e.g.
- *   `"Grant the required privileges to the current role with: GRANT SELECT ON public.users TO anon;"`.
- *   Missing column? `hint` suggests the column you probably meant. Whenever
- *   Postgres knows the fix, it puts it in `hint`.
- * - `code` — stable error code from PostgREST (e.g. `PGRST301`) or Postgres
- *   (e.g. `42501`). Branch on this rather than on `message` text.
- * - `details` — extra context, often the offending value, key, or row.
- * - `message` — human-readable summary. Useful in UI strings; less useful
- *   for debugging.
- *
- * {@link https://postgrest.org/en/stable/api.html?highlight=options#errors-and-http-status-codes}
+ * Namespace type for error classes
+ * Determines the error class names and type guards
  */
-declare class PostgrestError extends Error {
-  details: string;
-  hint: string;
-  code: string;
-  /**
-   * @example
-   * ```ts
-   * import PostgrestError from '@supabase/postgrest-js'
-   *
-   * throw new PostgrestError({
-   *   message: 'Row level security prevented the request',
-   *   details: 'RLS denied the insert',
-   *   hint: 'Check your policies',
-   *   code: 'PGRST301',
-   * })
-   * ```
-   */
-  constructor(context: {
-    message: string;
-    details: string;
-    hint: string;
-    code: string;
-  });
+type ErrorNamespace = 'storage' | 'vectors';
+/**
+ * Base error class for all Storage errors
+ * Supports both 'storage' and 'vectors' namespaces
+ */
+declare class StorageError extends Error {
+  protected __isStorageError: boolean;
+  protected namespace: ErrorNamespace;
+  status: number | undefined;
+  statusCode: string | undefined;
+  constructor(message: string, namespace?: ErrorNamespace, status?: number, statusCode?: string);
   toJSON(): {
     name: string;
     message: string;
-    details: string;
-    hint: string;
-    code: string;
+    status: number | undefined;
+    statusCode: string | undefined;
   };
 }
-//#endregion
-//#region src/types/common/common.d.ts
-type Fetch = typeof fetch;
-type GenericRelationship = {
-  foreignKeyName: string;
-  columns: string[];
-  isOneToOne?: boolean;
-  referencedRelation: string;
-  referencedColumns: string[];
-};
-type GenericTable = {
-  Row: Record<string, unknown>;
-  Insert: Record<string, unknown>;
-  Update: Record<string, unknown>;
-  Relationships: GenericRelationship[];
-};
-type GenericUpdatableView = {
-  Row: Record<string, unknown>;
-  Insert: Record<string, unknown>;
-  Update: Record<string, unknown>;
-  Relationships: GenericRelationship[];
-};
-type GenericNonUpdatableView = {
-  Row: Record<string, unknown>;
-  Relationships: GenericRelationship[];
-};
-type GenericView = GenericUpdatableView | GenericNonUpdatableView;
-type GenericSetofOption = {
-  isSetofReturn?: boolean | undefined;
-  isOneToOne?: boolean | undefined;
-  isNotNullable?: boolean | undefined;
-  to: string;
-  from: string;
-};
-type GenericFunction = {
-  Args: Record<string, unknown> | never;
-  Returns: unknown;
-  SetofOptions?: GenericSetofOption;
-};
-type GenericSchema = {
-  Tables: Record<string, GenericTable>;
-  Views: Record<string, GenericView>;
-  Functions: Record<string, GenericFunction>;
-};
-type ClientServerOptions = {
-  PostgrestVersion?: string;
-};
-//#endregion
-//#region src/select-query-parser/types.d.ts
-type AggregateWithoutColumnFunctions = 'count';
-type AggregateWithColumnFunctions = 'sum' | 'avg' | 'min' | 'max' | AggregateWithoutColumnFunctions;
-type AggregateFunctions = AggregateWithColumnFunctions;
-type Json = string | number | boolean | null | {
-  [key: string]: Json | undefined;
-} | Json[];
-type PostgresSQLNumberTypes = 'int2' | 'int4' | 'int8' | 'float4' | 'float8' | 'numeric';
-type PostgresSQLStringTypes = 'bytea' | 'bpchar' | 'varchar' | 'date' | 'text' | 'citext' | 'time' | 'timetz' | 'timestamp' | 'timestamptz' | 'uuid' | 'vector';
-type SingleValuePostgreSQLTypes = PostgresSQLNumberTypes | PostgresSQLStringTypes | 'bool' | 'json' | 'jsonb' | 'void' | 'record' | string;
-type ArrayPostgreSQLTypes = `_${SingleValuePostgreSQLTypes}`;
-type TypeScriptSingleValueTypes<T extends SingleValuePostgreSQLTypes> = T extends 'bool' ? boolean : T extends PostgresSQLNumberTypes ? number : T extends PostgresSQLStringTypes ? string : T extends 'json' | 'jsonb' ? Json : T extends 'void' ? undefined : T extends 'record' ? Record<string, unknown> : unknown;
-type StripUnderscore<T extends string> = T extends `_${infer U}` ? U : T;
-type PostgreSQLTypes = SingleValuePostgreSQLTypes | ArrayPostgreSQLTypes;
-type TypeScriptTypes<T extends PostgreSQLTypes> = T extends ArrayPostgreSQLTypes ? TypeScriptSingleValueTypes<StripUnderscore<Extract<T, SingleValuePostgreSQLTypes>>>[] : TypeScriptSingleValueTypes<T>;
-type UnionToIntersection$1<U> = (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
-type LastOf$1<T> = UnionToIntersection$1<T extends any ? () => T : never> extends (() => infer R) ? R : never;
-type UnionToTuple<T, L$1 = LastOf$1<T>, N = ([T] extends [never] ? true : false), Acc extends unknown[] = []> = N extends true ? Acc : UnionToTuple<Exclude<T, L$1>, LastOf$1<Exclude<T, L$1>>, [Exclude<T, L$1>] extends [never] ? true : false, [L$1, ...Acc]>;
-type UnionToArray<T> = UnionToTuple<T> extends infer Tuple extends unknown[] ? Tuple : never;
-type ExtractFirstProperty<T> = T extends { [K in keyof T]: infer U } ? U : never;
-type ContainsNull<T> = null extends T ? true : false;
-type IsNonEmptyArray<T> = Exclude<T, undefined> extends readonly [unknown, ...unknown[]] ? true : false;
-type TablesAndViews$2<Schema extends GenericSchema> = Schema['Tables'] & Exclude<Schema['Views'], ''>;
-//#endregion
-//#region src/select-query-parser/parser.d.ts
 /**
- * Parses a query.
- * A query is a sequence of nodes, separated by `,`, ensuring that there is
- * no remaining input after all nodes have been parsed.
- *
- * Returns an array of parsed nodes, or an error.
+ * Type guard to check if an error is a StorageError
+ * @param error - The error to check
+ * @returns True if the error is a StorageError
  */
-type ParseQuery<Query extends string> = string extends Query ? GenericStringError : ParseNodes<EatWhitespace<Query>> extends [infer Nodes, `${infer Remainder}`] ? Nodes extends Ast.Node[] ? EatWhitespace<Remainder> extends '' ? SimplifyDeep<Nodes> : ParserError<`Unexpected input: ${Remainder}`> : ParserError<'Invalid nodes array structure'> : ParseNodes<EatWhitespace<Query>>;
+declare function isStorageError(error: unknown): error is StorageError;
 /**
- * Notes: all `Parse*` types assume that their input strings have their whitespace
- * removed. They return tuples of ["Return Value", "Remainder of text"] or
- * a `ParserError`.
+ * API error returned from Storage service
+ * Includes HTTP status code and service-specific error code
  */
-/**
- * Parses a sequence of nodes, separated by `,`.
- *
- * Returns a tuple of ["Parsed fields", "Remainder of text"] or an error.
- */
-type ParseNodes<Input extends string> = string extends Input ? GenericStringError : ParseNodesHelper<Input, []>;
-type ParseNodesHelper<Input extends string, Nodes$1 extends Ast.Node[]> = ParseNode<Input> extends [infer Node, `${infer Remainder}`] ? Node extends Ast.Node ? EatWhitespace<Remainder> extends `,${infer Remainder}` ? ParseNodesHelper<EatWhitespace<Remainder>, [...Nodes$1, Node]> : [[...Nodes$1, Node], EatWhitespace<Remainder>] : ParserError<'Invalid node type in nodes helper'> : ParseNode<Input>;
-/**
- * Parses a node.
- * A node is one of the following:
- * - `*`
- * - a field, as defined above
- * - a renamed field, `renamed_field:field`
- * - a spread field, `...field`
- */
-type ParseNode<Input extends string> = Input extends '' ? ParserError<'Empty string'> : Input extends `*${infer Remainder}` ? [Ast.StarNode, EatWhitespace<Remainder>] : Input extends `...${infer Remainder}` ? ParseField<EatWhitespace<Remainder>> extends [infer TargetField, `${infer Remainder}`] ? TargetField extends Ast.FieldNode ? [{
-  type: 'spread';
-  target: TargetField;
-}, EatWhitespace<Remainder>] : ParserError<'Invalid target field type in spread'> : ParserError<`Unable to parse spread resource at \`${Input}\``> : ParseIdentifier<Input> extends [infer NameOrAlias, `${infer Remainder}`] ? EatWhitespace<Remainder> extends `::${infer _}` ? ParseField<Input> : EatWhitespace<Remainder> extends `:${infer Remainder}` ? ParseField<EatWhitespace<Remainder>> extends [infer Field, `${infer Remainder}`] ? Field extends Ast.FieldNode ? [Omit<Field, 'alias'> & {
-  alias: NameOrAlias;
-}, EatWhitespace<Remainder>] : ParserError<'Invalid field type in alias parsing'> : ParserError<`Unable to parse renamed field at \`${Input}\``> : ParseField<Input> : ParserError<`Expected identifier at \`${Input}\``>;
-/**
- * Parses a field without preceding alias.
- * A field is one of the following:
- * - a top-level `count` field: https://docs.postgrest.org/en/v12/references/api/aggregate_functions.html#the-case-of-count
- * - a field with an embedded resource
- *   - `field(nodes)`
- *   - `field!hint(nodes)`
- *   - `field!inner(nodes)`
- *   - `field!left(nodes)`
- *   - `field!hint!inner(nodes)`
- *   - `field!hint!left(nodes)`
- * - a field without an embedded resource (see {@link ParseNonEmbeddedResourceField})
- */
-type ParseField<Input extends string> = Input extends '' ? ParserError<'Empty string'> : ParseIdentifier<Input> extends [infer Name, `${infer Remainder}`] ? Name extends 'count' ? ParseCountField<Input> : Remainder extends `!inner${infer Remainder}` ? ParseEmbeddedResource<EatWhitespace<Remainder>> extends [infer Children, `${infer Remainder}`] ? Children extends Ast.Node[] ? [{
-  type: 'field';
-  name: Name;
-  innerJoin: true;
-  children: Children;
-}, Remainder] : ParserError<'Invalid children array in inner join'> : CreateParserErrorIfRequired<ParseEmbeddedResource<EatWhitespace<Remainder>>, `Expected embedded resource after "!inner" at \`${Remainder}\``> : EatWhitespace<Remainder> extends `!left${infer Remainder}` ? ParseEmbeddedResource<EatWhitespace<Remainder>> extends [infer Children, `${infer Remainder}`] ? Children extends Ast.Node[] ? [{
-  type: 'field';
-  name: Name;
-  children: Children;
-}, EatWhitespace<Remainder>] : ParserError<'Invalid children array in left join'> : CreateParserErrorIfRequired<ParseEmbeddedResource<EatWhitespace<Remainder>>, `Expected embedded resource after "!left" at \`${EatWhitespace<Remainder>}\``> : EatWhitespace<Remainder> extends `!${infer Remainder}` ? ParseIdentifier<EatWhitespace<Remainder>> extends [infer Hint, `${infer Remainder}`] ? EatWhitespace<Remainder> extends `!inner${infer Remainder}` ? ParseEmbeddedResource<EatWhitespace<Remainder>> extends [infer Children, `${infer Remainder}`] ? Children extends Ast.Node[] ? [{
-  type: 'field';
-  name: Name;
-  hint: Hint;
-  innerJoin: true;
-  children: Children;
-}, EatWhitespace<Remainder>] : ParserError<'Invalid children array in hint inner join'> : ParseEmbeddedResource<EatWhitespace<Remainder>> : ParseEmbeddedResource<EatWhitespace<Remainder>> extends [infer Children, `${infer Remainder}`] ? Children extends Ast.Node[] ? [{
-  type: 'field';
-  name: Name;
-  hint: Hint;
-  children: Children;
-}, EatWhitespace<Remainder>] : ParserError<'Invalid children array in hint'> : ParseEmbeddedResource<EatWhitespace<Remainder>> : ParserError<`Expected identifier after "!" at \`${EatWhitespace<Remainder>}\``> : EatWhitespace<Remainder> extends `(${infer _}` ? ParseEmbeddedResource<EatWhitespace<Remainder>> extends [infer Children, `${infer Remainder}`] ? Children extends Ast.Node[] ? [{
-  type: 'field';
-  name: Name;
-  children: Children;
-}, EatWhitespace<Remainder>] : ParserError<'Invalid children array in field'> : ParseEmbeddedResource<EatWhitespace<Remainder>> : ParseNonEmbeddedResourceField<Input> : ParserError<`Expected identifier at \`${Input}\``>;
-type ParseCountField<Input extends string> = ParseIdentifier<Input> extends ['count', `${infer Remainder}`] ? (EatWhitespace<Remainder> extends `()${infer Remainder_}` ? EatWhitespace<Remainder_> : EatWhitespace<Remainder>) extends `${infer Remainder}` ? Remainder extends `::${infer _}` ? ParseFieldTypeCast<Remainder> extends [infer CastType, `${infer Remainder}`] ? [{
-  type: 'field';
-  name: 'count';
-  aggregateFunction: 'count';
-  castType: CastType;
-}, Remainder] : ParseFieldTypeCast<Remainder> : [{
-  type: 'field';
-  name: 'count';
-  aggregateFunction: 'count';
-}, Remainder] : never : ParserError<`Expected "count" at \`${Input}\``>;
-/**
- * Parses an embedded resource, which is an opening `(`, followed by a sequence of
- * 0 or more nodes separated by `,`, then a closing `)`.
- *
- * Returns a tuple of ["Parsed fields", "Remainder of text"], an error,
- * or the original string input indicating that no opening `(` was found.
- */
-type ParseEmbeddedResource<Input extends string> = Input extends `(${infer Remainder}` ? EatWhitespace<Remainder> extends `)${infer Remainder}` ? [[], EatWhitespace<Remainder>] : ParseNodes<EatWhitespace<Remainder>> extends [infer Nodes, `${infer Remainder}`] ? Nodes extends Ast.Node[] ? EatWhitespace<Remainder> extends `)${infer Remainder}` ? [Nodes, EatWhitespace<Remainder>] : ParserError<`Expected ")" at \`${EatWhitespace<Remainder>}\``> : ParserError<'Invalid nodes array in embedded resource'> : ParseNodes<EatWhitespace<Remainder>> : ParserError<`Expected "(" at \`${Input}\``>;
-/**
- * Parses a field excluding embedded resources, without preceding field renaming.
- * This is one of the following:
- * - `field`
- * - `field.aggregate()`
- * - `field.aggregate()::type`
- * - `field::type`
- * - `field::type.aggregate()`
- * - `field::type.aggregate()::type`
- * - `field->json...`
- * - `field->json.aggregate()`
- * - `field->json.aggregate()::type`
- * - `field->json::type`
- * - `field->json::type.aggregate()`
- * - `field->json::type.aggregate()::type`
- */
-type ParseNonEmbeddedResourceField<Input extends string> = ParseIdentifier<Input> extends [infer Name, `${infer Remainder}`] ? (Remainder extends `->${infer PathAndRest}` ? ParseJsonAccessor<Remainder> extends [infer PropertyName, infer PropertyType, `${infer Remainder}`] ? [{
-  type: 'field';
-  name: Name;
-  alias: PropertyName;
-  castType: PropertyType;
-  jsonPath: JsonPathToAccessor<PathAndRest extends `${infer Path},${string}` ? Path : PathAndRest>;
-}, Remainder] : ParseJsonAccessor<Remainder> : [{
-  type: 'field';
-  name: Name;
-}, Remainder]) extends infer Parsed ? Parsed extends [infer Field, `${infer Remainder}`] ? (Remainder extends `::${infer _}` ? ParseFieldTypeCast<Remainder> extends [infer CastType, `${infer Remainder}`] ? [Omit<Field, 'castType'> & {
-  castType: CastType;
-}, Remainder] : ParseFieldTypeCast<Remainder> : [Field, Remainder]) extends infer Parsed ? Parsed extends [infer Field, `${infer Remainder}`] ? Remainder extends `.${infer _}` ? ParseFieldAggregation<Remainder> extends [infer AggregateFunction, `${infer Remainder}`] ? Remainder extends `::${infer _}` ? ParseFieldTypeCast<Remainder> extends [infer CastType, `${infer Remainder}`] ? [Omit<Field, 'castType'> & {
-  aggregateFunction: AggregateFunction;
-  castType: CastType;
-}, Remainder] : ParseFieldTypeCast<Remainder> : [Field & {
-  aggregateFunction: AggregateFunction;
-}, Remainder] : ParseFieldAggregation<Remainder> : [Field, Remainder] : Parsed : never : Parsed : never : ParserError<`Expected identifier at \`${Input}\``>;
-/**
- * Parses a JSON property accessor of the shape `->a->b->c`. The last accessor in
- * the series may convert to text by using the ->> operator instead of ->.
- *
- * Returns a tuple of ["Last property name", "Last property type", "Remainder of text"]
- */
-type ParseJsonAccessor<Input extends string> = Input extends `->${infer Remainder}` ? Remainder extends `>${infer Remainder}` ? ParseIdentifier<Remainder> extends [infer Name, `${infer Remainder}`] ? [Name, 'text', EatWhitespace<Remainder>] : ParserError<'Expected property name after `->>`'> : ParseIdentifier<Remainder> extends [infer Name, `${infer Remainder}`] ? ParseJsonAccessor<Remainder> extends [infer PropertyName, infer PropertyType, `${infer Remainder}`] ? [PropertyName, PropertyType, EatWhitespace<Remainder>] : [Name, 'json', EatWhitespace<Remainder>] : ParserError<'Expected property name after `->`'> : ParserError<'Expected ->'>;
-/**
- * Parses a field typecast (`::type`), returning a tuple of ["Type", "Remainder of text"].
- */
-type ParseFieldTypeCast<Input extends string> = EatWhitespace<Input> extends `::${infer Remainder}` ? ParseIdentifier<EatWhitespace<Remainder>> extends [`${infer CastType}`, `${infer Remainder}`] ? [CastType, EatWhitespace<Remainder>] : ParserError<`Invalid type for \`::\` operator at \`${Remainder}\``> : ParserError<'Expected ::'>;
-/**
- * Parses a field aggregation (`.max()`), returning a tuple of ["Aggregate function", "Remainder of text"]
- */
-type ParseFieldAggregation<Input extends string> = EatWhitespace<Input> extends `.${infer Remainder}` ? ParseIdentifier<EatWhitespace<Remainder>> extends [`${infer FunctionName}`, `${infer Remainder}`] ? FunctionName extends Token.AggregateFunction ? EatWhitespace<Remainder> extends `()${infer Remainder}` ? [FunctionName, EatWhitespace<Remainder>] : ParserError<`Expected \`()\` after \`.\` operator \`${FunctionName}\``> : ParserError<`Invalid type for \`.\` operator \`${FunctionName}\``> : ParserError<`Invalid type for \`.\` operator at \`${Remainder}\``> : ParserError<'Expected .'>;
-/**
- * Parses a (possibly double-quoted) identifier.
- * Identifiers are sequences of 1 or more letters.
- */
-type ParseIdentifier<Input extends string> = ParseLetters<Input> extends [infer Name, `${infer Remainder}`] ? [Name, EatWhitespace<Remainder>] : ParseQuotedLetters<Input> extends [infer Name, `${infer Remainder}`] ? [Name, EatWhitespace<Remainder>] : ParserError<`No (possibly double-quoted) identifier at \`${Input}\``>;
-/**
- * Parse a consecutive sequence of 1 or more letter, where letters are `[0-9a-zA-Z_]`.
- */
-type ParseLetters<Input extends string> = string extends Input ? GenericStringError : ParseLettersHelper<Input, ''> extends [`${infer Letters}`, `${infer Remainder}`] ? Letters extends '' ? ParserError<`Expected letter at \`${Input}\``> : [Letters, Remainder] : ParseLettersHelper<Input, ''>;
-type ParseLettersHelper<Input extends string, Acc extends string> = string extends Input ? GenericStringError : Input extends `${infer L}${infer Remainder}` ? L extends Token.Letter ? ParseLettersHelper<Remainder, `${Acc}${L}`> : [Acc, Input] : [Acc, ''];
-/**
- * Parse a consecutive sequence of 1 or more double-quoted letters,
- * where letters are `[^"]`.
- */
-type ParseQuotedLetters<Input extends string> = string extends Input ? GenericStringError : Input extends `"${infer Remainder}` ? ParseQuotedLettersHelper<Remainder, ''> extends [`${infer Letters}`, `${infer Remainder}`] ? Letters extends '' ? ParserError<`Expected string at \`${Remainder}\``> : [Letters, Remainder] : ParseQuotedLettersHelper<Remainder, ''> : ParserError<`Not a double-quoted string at \`${Input}\``>;
-type ParseQuotedLettersHelper<Input extends string, Acc extends string> = string extends Input ? GenericStringError : Input extends `${infer L}${infer Remainder}` ? L extends '"' ? [Acc, Remainder] : ParseQuotedLettersHelper<Remainder, `${Acc}${L}`> : ParserError<`Missing closing double-quote in \`"${Acc}${Input}\``>;
-/**
- * Trims whitespace from the left of the input.
- */
-type EatWhitespace<Input extends string> = string extends Input ? GenericStringError : Input extends `${Token.Whitespace}${infer Remainder}` ? EatWhitespace<Remainder> : Input;
-/**
- * Creates a new {@link ParserError} if the given input is not already a parser error.
- */
-type CreateParserErrorIfRequired<Input, Message extends string> = Input extends ParserError<string> ? Input : ParserError<Message>;
-/**
- * Parser errors.
- */
-type ParserError<Message extends string> = {
-  error: true;
-} & Message;
-type GenericStringError = ParserError<'Received a generic string'>;
-declare namespace Ast {
-  type Node = FieldNode | StarNode | SpreadNode;
-  type FieldNode = {
-    type: 'field';
-    name: string;
-    alias?: string;
-    hint?: string;
-    innerJoin?: true;
-    castType?: string;
-    jsonPath?: string;
-    aggregateFunction?: Token.AggregateFunction;
-    children?: Node[];
-  };
-  type StarNode = {
-    type: 'star';
-  };
-  type SpreadNode = {
-    type: 'spread';
-    target: FieldNode & {
-      children: Node[];
-    };
-  };
-}
-declare namespace Token {
-  export type Whitespace = ' ' | '\n' | '\t';
-  type LowerAlphabet = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
-  type Alphabet = LowerAlphabet | Uppercase<LowerAlphabet>;
-  type Digit = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0';
-  export type Letter = Alphabet | Digit | '_';
-  export type AggregateFunction = 'count' | 'sum' | 'avg' | 'min' | 'max';
-  export {};
-}
-//#endregion
-//#region src/select-query-parser/utils.d.ts
-type IsAny$1<T> = 0 extends 1 & T ? true : false;
-type SelectQueryError<Message extends string> = {
-  error: true;
-} & Message;
-type DeduplicateRelationships<T extends readonly unknown[]> = T extends readonly [infer First, ...infer Rest] ? First extends Rest[number] ? DeduplicateRelationships<Rest extends readonly unknown[] ? Rest : []> : [First, ...DeduplicateRelationships<Rest extends readonly unknown[] ? Rest : []>] : T;
-type GetFieldNodeResultName<Field$1 extends Ast.FieldNode> = Field$1['alias'] extends string ? Field$1['alias'] : Field$1['aggregateFunction'] extends AggregateFunctions ? Field$1['aggregateFunction'] : Field$1['name'];
-type FilterRelationNodes<Nodes$1 extends Ast.Node[]> = UnionToArray<{ [K in keyof Nodes$1]: Nodes$1[K] extends Ast.SpreadNode ? Nodes$1[K]['target'] : Nodes$1[K] extends Ast.FieldNode ? IsNonEmptyArray<Nodes$1[K]['children']> extends true ? Nodes$1[K] : never : never }[number]>;
-type ResolveRelationships<Schema extends GenericSchema, RelationName extends string, Relationships extends GenericRelationship[], Nodes$1 extends Ast.FieldNode[]> = UnionToArray<{ [K in keyof Nodes$1]: Nodes$1[K] extends Ast.FieldNode ? ResolveRelationship<Schema, Relationships, Nodes$1[K], RelationName> extends infer Relation ? Relation extends {
-  relation: {
-    referencedRelation: string;
-    foreignKeyName: string;
-    match: string;
-  };
-  from: string;
-} ? {
-  referencedTable: Relation['relation']['referencedRelation'];
-  fkName: Relation['relation']['foreignKeyName'];
-  from: Relation['from'];
-  match: Relation['relation']['match'];
-  fieldName: GetFieldNodeResultName<Nodes$1[K]>;
-} : Relation : never : never }>[0];
-/**
- * Checks if a relation is implicitly referenced twice, requiring disambiguation
- */
-type IsDoubleReference<T, U> = T extends {
-  referencedTable: infer RT;
-  fieldName: infer FN;
-  match: infer M;
-} ? M extends 'col' | 'refrel' ? U extends {
-  referencedTable: RT;
-  fieldName: FN;
-  match: M;
-} ? true : false : false : false;
-/**
- * Compares one element with all other elements in the array to find duplicates
- */
-type CheckDuplicates<Arr extends any[], Current> = Arr extends [infer Head, ...infer Tail] ? IsDoubleReference<Current, Head> extends true ? Head | CheckDuplicates<Tail, Current> : CheckDuplicates<Tail, Current> : never;
-/**
- * Iterates over the elements of the array to find duplicates
- */
-type FindDuplicatesWithinDeduplicated<Arr extends any[]> = Arr extends [infer Head, ...infer Tail] ? CheckDuplicates<Tail, Head> | FindDuplicatesWithinDeduplicated<Tail> : never;
-type FindDuplicates<Arr extends any[]> = FindDuplicatesWithinDeduplicated<DeduplicateRelationships<Arr>>;
-type CheckDuplicateEmbededReference<Schema extends GenericSchema, RelationName extends string, Relationships extends GenericRelationship[], Nodes$1 extends Ast.Node[]> = FilterRelationNodes<Nodes$1> extends infer RelationsNodes ? RelationsNodes extends Ast.FieldNode[] ? ResolveRelationships<Schema, RelationName, Relationships, RelationsNodes> extends infer ResolvedRels ? ResolvedRels extends unknown[] ? FindDuplicates<ResolvedRels> extends infer Duplicates ? Duplicates extends never ? false : Duplicates extends {
-  fieldName: infer FieldName;
-} ? FieldName extends string ? { [K in FieldName]: SelectQueryError<`table "${RelationName}" specified more than once use hinting for desambiguation`> } : false : false : false : false : false : false : false;
-/**
- * Returns a boolean representing whether there is a foreign key referencing
- * a given relation.
- */
-type HasFKeyToFRel<FRelName, Relationships> = Relationships extends [infer R] ? R extends {
-  referencedRelation: FRelName;
-} ? true : false : Relationships extends [infer R, ...infer Rest] ? HasFKeyToFRel<FRelName, [R]> extends true ? true : HasFKeyToFRel<FRelName, Rest> : false;
-/**
- * Checks if there is more than one relation to a given foreign relation name in the Relationships.
- */
-type HasMultipleFKeysToFRelDeduplicated<FRelName, Relationships> = Relationships extends [infer R, ...infer Rest] ? R extends {
-  referencedRelation: FRelName;
-} ? HasFKeyToFRel<FRelName, Rest> extends true ? true : HasMultipleFKeysToFRelDeduplicated<FRelName, Rest> : HasMultipleFKeysToFRelDeduplicated<FRelName, Rest> : false;
-type HasMultipleFKeysToFRel<FRelName, Relationships extends unknown[]> = HasMultipleFKeysToFRelDeduplicated<FRelName, DeduplicateRelationships<Relationships>>;
-type CheckRelationshipError<Schema extends GenericSchema, Relationships extends GenericRelationship[], CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string, FoundRelation$1> = FoundRelation$1 extends SelectQueryError<string> ? FoundRelation$1 : FoundRelation$1 extends {
-  relation: {
-    referencedRelation: infer RelatedRelationName;
-    name: string;
-  };
-  direction: 'reverse';
-} ? RelatedRelationName extends string ? HasMultipleFKeysToFRel<RelatedRelationName, Relationships> extends true ? FoundRelation$1 extends {
-  relation: {
-    match: 'col';
-  };
-} ? FoundRelation$1 : SelectQueryError<`Could not embed because more than one relationship was found for '${RelatedRelationName}' and '${CurrentTableOrView}' you need to hint the column with ${RelatedRelationName}!<columnName> ?`> : FoundRelation$1 : never : FoundRelation$1 extends {
-  relation: {
-    referencedRelation: infer RelatedRelationName;
-    name: string;
-  };
-  direction: 'forward';
-  from: infer From;
-} ? RelatedRelationName extends string ? From extends keyof TablesAndViews$2<Schema> & string ? HasMultipleFKeysToFRel<RelatedRelationName, TablesAndViews$2<Schema>[From]['Relationships']> extends true ? SelectQueryError<`Could not embed because more than one relationship was found for '${From}' and '${RelatedRelationName}' you need to hint the column with ${From}!<columnName> ?`> : FoundRelation$1 : never : never : FoundRelation$1;
-/**
- * Resolves relationships for embedded resources and retrieves the referenced Table
- */
-type ResolveRelationship<Schema extends GenericSchema, Relationships extends GenericRelationship[], Field$1 extends Ast.FieldNode, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string> = ResolveReverseRelationship<Schema, Relationships, Field$1, CurrentTableOrView> extends infer ReverseRelationship ? ReverseRelationship extends false ? CheckRelationshipError<Schema, Relationships, CurrentTableOrView, ResolveForwardRelationship<Schema, Field$1, CurrentTableOrView>> : CheckRelationshipError<Schema, Relationships, CurrentTableOrView, ReverseRelationship> : never;
-/**
- * Resolves reverse relationships (from children to parent)
- */
-type ResolveReverseRelationship<Schema extends GenericSchema, Relationships extends GenericRelationship[], Field$1 extends Ast.FieldNode, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string> = FindFieldMatchingRelationships<Schema, Relationships, Field$1> extends infer FoundRelation ? FoundRelation extends never ? false : FoundRelation extends {
-  referencedRelation: infer RelatedRelationName;
-} ? RelatedRelationName extends string ? RelatedRelationName extends keyof TablesAndViews$2<Schema> ? FoundRelation extends {
-  hint: string;
-} | {
-  match: 'col';
-} ? {
-  referencedTable: TablesAndViews$2<Schema>[RelatedRelationName];
-  relation: FoundRelation;
-  direction: 'reverse';
-  from: CurrentTableOrView;
-} : HasMultipleFKeysToFRel<RelatedRelationName, Relationships> extends true ? SelectQueryError<`Could not embed because more than one relationship was found for '${RelatedRelationName}' and '${CurrentTableOrView}' you need to hint the column with ${RelatedRelationName}!<columnName> ?`> : {
-  referencedTable: TablesAndViews$2<Schema>[RelatedRelationName];
-  relation: FoundRelation;
-  direction: 'reverse';
-  from: CurrentTableOrView;
-} : SelectQueryError<`Relation '${RelatedRelationName}' not found in schema.`> : false : false : false;
-type FindMatchingTableRelationships<Schema extends GenericSchema, Relationships extends GenericRelationship[], value extends string> = Relationships extends [infer R, ...infer Rest] ? Rest extends GenericRelationship[] ? R extends {
-  referencedRelation: infer ReferencedRelation;
-} ? ReferencedRelation extends keyof Schema['Tables'] ? R extends {
-  foreignKeyName: value;
-} ? R & {
-  match: 'fkname';
-} : R extends {
-  referencedRelation: value;
-} ? R & {
-  match: 'refrel';
-} : R extends {
-  columns: [value];
-} ? R & {
-  match: 'col';
-} : FindMatchingTableRelationships<Schema, Rest, value> : FindMatchingTableRelationships<Schema, Rest, value> : false : false : false;
-type FindMatchingViewRelationships<Schema extends GenericSchema, Relationships extends GenericRelationship[], value extends string> = Relationships extends [infer R, ...infer Rest] ? Rest extends GenericRelationship[] ? R extends {
-  referencedRelation: infer ReferencedRelation;
-} ? ReferencedRelation extends keyof Schema['Views'] ? R extends {
-  foreignKeyName: value;
-} ? R & {
-  match: 'fkname';
-} : R extends {
-  referencedRelation: value;
-} ? R & {
-  match: 'refrel';
-} : R extends {
-  columns: [value];
-} ? R & {
-  match: 'col';
-} : FindMatchingViewRelationships<Schema, Rest, value> : FindMatchingViewRelationships<Schema, Rest, value> : false : false : false;
-type FindMatchingHintTableRelationships<Schema extends GenericSchema, Relationships extends GenericRelationship[], hint extends string, name extends string> = Relationships extends [infer R, ...infer Rest] ? Rest extends GenericRelationship[] ? R extends {
-  referencedRelation: infer ReferencedRelation;
-} ? ReferencedRelation extends name ? R extends {
-  foreignKeyName: hint;
-} ? R & {
-  match: 'fkname';
-} : R extends {
-  referencedRelation: hint;
-} ? R & {
-  match: 'refrel';
-} : R extends {
-  columns: [hint];
-} ? R & {
-  match: 'col';
-} : FindMatchingHintTableRelationships<Schema, Rest, hint, name> : FindMatchingHintTableRelationships<Schema, Rest, hint, name> : false : false : false;
-type FindMatchingHintViewRelationships<Schema extends GenericSchema, Relationships extends GenericRelationship[], hint extends string, name extends string> = Relationships extends [infer R, ...infer Rest] ? Rest extends GenericRelationship[] ? R extends {
-  referencedRelation: infer ReferencedRelation;
-} ? ReferencedRelation extends name ? R extends {
-  foreignKeyName: hint;
-} ? R & {
-  match: 'fkname';
-} : R extends {
-  referencedRelation: hint;
-} ? R & {
-  match: 'refrel';
-} : R extends {
-  columns: [hint];
-} ? R & {
-  match: 'col';
-} : FindMatchingHintViewRelationships<Schema, Rest, hint, name> : FindMatchingHintViewRelationships<Schema, Rest, hint, name> : false : false : false;
-type IsColumnsNullable<Table extends Pick<GenericTable, 'Row'>, Columns extends (keyof Table['Row'])[]> = Columns extends [infer Column, ...infer Rest] ? Column extends keyof Table['Row'] ? ContainsNull<Table['Row'][Column]> extends true ? true : IsColumnsNullable<Table, Rest extends (keyof Table['Row'])[] ? Rest : []> : false : false;
-type IsRelationNullable<Table extends GenericTable, Relation$1 extends GenericRelationship> = IsColumnsNullable<Table, Relation$1['columns']>;
-type TableForwardRelationships<Schema extends GenericSchema, TName> = TName extends keyof TablesAndViews$2<Schema> ? UnionToArray<RecursivelyFindRelationships<Schema, TName, keyof TablesAndViews$2<Schema>>> extends infer R ? R extends (GenericRelationship & {
-  from: keyof TablesAndViews$2<Schema>;
-})[] ? R : [] : [] : [];
-type RecursivelyFindRelationships<Schema extends GenericSchema, TName, Keys extends keyof TablesAndViews$2<Schema>> = Keys extends infer K ? K extends keyof TablesAndViews$2<Schema> ? FilterRelationships<TablesAndViews$2<Schema>[K]['Relationships'], TName, K> extends never ? RecursivelyFindRelationships<Schema, TName, Exclude<Keys, K>> : FilterRelationships<TablesAndViews$2<Schema>[K]['Relationships'], TName, K> | RecursivelyFindRelationships<Schema, TName, Exclude<Keys, K>> : false : false;
-type FilterRelationships<R$1, TName, From$1> = R$1 extends readonly (infer Rel)[] ? Rel extends {
-  referencedRelation: TName;
-} ? Rel & {
-  from: From$1;
-} : never : never;
-type ResolveForwardRelationship<Schema extends GenericSchema, Field$1 extends Ast.FieldNode, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string> = FindFieldMatchingRelationships<Schema, TablesAndViews$2<Schema>[Field$1['name']]['Relationships'], Ast.FieldNode & {
-  name: CurrentTableOrView;
-  hint: Field$1['hint'];
-}> extends infer FoundByName ? FoundByName extends GenericRelationship ? {
-  referencedTable: TablesAndViews$2<Schema>[Field$1['name']];
-  relation: FoundByName;
-  direction: 'forward';
-  from: Field$1['name'];
-  type: 'found-by-name';
-} : FindFieldMatchingRelationships<Schema, TableForwardRelationships<Schema, CurrentTableOrView>, Field$1> extends infer FoundByMatch ? FoundByMatch extends GenericRelationship & {
-  from: keyof TablesAndViews$2<Schema>;
-} ? {
-  referencedTable: TablesAndViews$2<Schema>[FoundByMatch['from']];
-  relation: FoundByMatch;
-  direction: 'forward';
-  from: CurrentTableOrView;
-  type: 'found-by-match';
-} : FindJoinTableRelationship<Schema, CurrentTableOrView, Field$1['name']> extends infer FoundByJoinTable ? FoundByJoinTable extends GenericRelationship ? {
-  referencedTable: TablesAndViews$2<Schema>[FoundByJoinTable['referencedRelation']];
-  relation: FoundByJoinTable & {
-    match: 'refrel';
-  };
-  direction: 'forward';
-  from: CurrentTableOrView;
-  type: 'found-by-join-table';
-} : ResolveEmbededFunctionJoinTableRelationship<Schema, CurrentTableOrView, Field$1['name']> extends infer FoundEmbededFunctionJoinTableRelation ? FoundEmbededFunctionJoinTableRelation extends GenericFunction ? FoundEmbededFunctionJoinTableRelation['SetofOptions'] extends GenericSetofOption ? FoundEmbededFunctionJoinTableRelation['SetofOptions']['to'] extends '' ? {
-  referencedTable: {
-    Row: Record<string, never>;
-    Relationships: [];
-  };
-  relation: {
-    foreignKeyName: `${Field$1['name']}_${CurrentTableOrView}_scalar_forward`;
-    columns: [];
-    isOneToOne: false;
-    referencedColumns: [];
-    referencedRelation: '';
-  } & {
-    match: 'func';
-    isNotNullable: FoundEmbededFunctionJoinTableRelation['SetofOptions']['isNotNullable'] extends true ? true : FoundEmbededFunctionJoinTableRelation['SetofOptions']['isSetofReturn'] extends true ? false : true;
-    isSetofReturn: FoundEmbededFunctionJoinTableRelation['SetofOptions']['isSetofReturn'];
-  };
-  scalarType: FoundEmbededFunctionJoinTableRelation['Returns'];
-  direction: 'forward';
-  from: CurrentTableOrView;
-  type: 'found-by-embeded-scalar-function';
-} : {
-  referencedTable: TablesAndViews$2<Schema>[FoundEmbededFunctionJoinTableRelation['SetofOptions']['to']];
-  relation: {
-    foreignKeyName: `${Field$1['name']}_${CurrentTableOrView}_${FoundEmbededFunctionJoinTableRelation['SetofOptions']['to']}_forward`;
-    columns: [];
-    isOneToOne: FoundEmbededFunctionJoinTableRelation['SetofOptions']['isOneToOne'] extends true ? true : false;
-    referencedColumns: [];
-    referencedRelation: FoundEmbededFunctionJoinTableRelation['SetofOptions']['to'];
-  } & {
-    match: 'func';
-    isNotNullable: FoundEmbededFunctionJoinTableRelation['SetofOptions']['isNotNullable'] extends true ? true : FoundEmbededFunctionJoinTableRelation['SetofOptions']['isSetofReturn'] extends true ? false : true;
-    isSetofReturn: FoundEmbededFunctionJoinTableRelation['SetofOptions']['isSetofReturn'];
-  };
-  direction: 'forward';
-  from: CurrentTableOrView;
-  type: 'found-by-embeded-function';
-} : SelectQueryError<`could not find the relation between ${CurrentTableOrView} and ${Field$1['name']}`> : SelectQueryError<`could not find the relation between ${CurrentTableOrView} and ${Field$1['name']}`> : SelectQueryError<`could not find the relation between ${CurrentTableOrView} and ${Field$1['name']}`> : SelectQueryError<`could not find the relation between ${CurrentTableOrView} and ${Field$1['name']}`> : SelectQueryError<`could not find the relation between ${CurrentTableOrView} and ${Field$1['name']}`> : SelectQueryError<`could not find the relation between ${CurrentTableOrView} and ${Field$1['name']}`>;
-/**
- * Given a CurrentTableOrView, finds all join tables to this relation.
- * For example, if products and categories are linked via product_categories table:
- *
- * @example Find join table relationship
- * Given:
- * - CurrentTableView = 'products'
- * - FieldName = "categories"
- *
- * It should return this relationship from product_categories:
- * {
- *   foreignKeyName: "product_categories_category_id_fkey",
- *   columns: ["category_id"],
- *   isOneToOne: false,
- *   referencedRelation: "categories",
- *   referencedColumns: ["id"]
- * }
- */
-type ResolveJoinTableRelationship<Schema extends GenericSchema, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string, FieldName$1 extends string> = { [TableName in keyof TablesAndViews$2<Schema>]: DeduplicateRelationships<TablesAndViews$2<Schema>[TableName]['Relationships']> extends readonly (infer Rel)[] ? Rel extends {
-  referencedRelation: CurrentTableOrView;
-} ? DeduplicateRelationships<TablesAndViews$2<Schema>[TableName]['Relationships']> extends readonly (infer OtherRel)[] ? OtherRel extends {
-  referencedRelation: FieldName$1;
-} ? OtherRel : never : never : never : never }[keyof TablesAndViews$2<Schema>];
-type ResolveEmbededFunctionJoinTableRelationship<Schema extends GenericSchema, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string, FieldName$1 extends string> = FindMatchingFunctionBySetofFrom<Schema['Functions'][FieldName$1], CurrentTableOrView> extends infer Fn ? Fn extends GenericFunction ? Fn : false : false;
-type FindJoinTableRelationship<Schema extends GenericSchema, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string, FieldName$1 extends string> = ResolveJoinTableRelationship<Schema, CurrentTableOrView, FieldName$1> extends infer Result ? [Result] extends [never] ? false : Result : never;
-/**
- * Finds a matching relationship based on the FieldNode's name and optional hint.
- */
-type FindFieldMatchingRelationships<Schema extends GenericSchema, Relationships extends GenericRelationship[], Field$1 extends Ast.FieldNode> = Field$1 extends {
-  hint: string;
-} ? FindMatchingHintTableRelationships<Schema, Relationships, Field$1['hint'], Field$1['name']> extends GenericRelationship ? FindMatchingHintTableRelationships<Schema, Relationships, Field$1['hint'], Field$1['name']> & {
-  branch: 'found-in-table-via-hint';
-  hint: Field$1['hint'];
-} : FindMatchingHintViewRelationships<Schema, Relationships, Field$1['hint'], Field$1['name']> extends GenericRelationship ? FindMatchingHintViewRelationships<Schema, Relationships, Field$1['hint'], Field$1['name']> & {
-  branch: 'found-in-view-via-hint';
-  hint: Field$1['hint'];
-} : SelectQueryError<'Failed to find matching relation via hint'> : FindMatchingTableRelationships<Schema, Relationships, Field$1['name']> extends GenericRelationship ? FindMatchingTableRelationships<Schema, Relationships, Field$1['name']> & {
-  branch: 'found-in-table-via-name';
-  name: Field$1['name'];
-} : FindMatchingViewRelationships<Schema, Relationships, Field$1['name']> extends GenericRelationship ? FindMatchingViewRelationships<Schema, Relationships, Field$1['name']> & {
-  branch: 'found-in-view-via-name';
-  name: Field$1['name'];
-} : SelectQueryError<'Failed to find matching relation via name'>;
-type JsonPathToAccessor<Path extends string> = Path extends `${infer P1}->${infer P2}` ? P2 extends `>${infer Rest}` ? JsonPathToAccessor<`${P1}.${Rest}`> : P2 extends string ? JsonPathToAccessor<`${P1}.${P2}`> : Path : Path extends `>${infer Rest}` ? JsonPathToAccessor<Rest> : Path extends `${infer P1}::${infer _}` ? JsonPathToAccessor<P1> : Path extends `${infer P1}${')' | ','}${infer _}` ? P1 : Path;
-type JsonPathToType<T, Path extends string> = Path extends '' ? T : ContainsNull<T> extends true ? JsonPathToType<Exclude<T, null>, Path> : Path extends `${infer Key}.${infer Rest}` ? Key extends keyof T ? JsonPathToType<T[Key], Rest> : never : Path extends keyof T ? T[Path] : never;
-type IsStringUnion<T> = string extends T ? false : T extends string ? [T] extends [never] ? false : true : false;
-type MatchingFunctionBySetofFrom<Fn$1 extends GenericFunction, TableName$1 extends string> = Fn$1['SetofOptions'] extends GenericSetofOption ? TableName$1 extends Fn$1['SetofOptions']['from'] ? Fn$1 : never : false;
-type FindMatchingFunctionBySetofFrom<FnUnion, TableName$1 extends string> = FnUnion extends infer Fn extends GenericFunction ? MatchingFunctionBySetofFrom<Fn, TableName$1> : false;
-type ComputedField<Schema extends GenericSchema, RelationName extends keyof TablesAndViews$2<Schema>, FieldName$1 extends keyof TablesAndViews$2<Schema>[RelationName]['Row']> = FieldName$1 extends keyof Schema['Functions'] ? [Schema['Functions'][FieldName$1]['Args']] extends [never] ? never : Schema['Functions'][FieldName$1] extends {
-  Args: {
-    '': TablesAndViews$2<Schema>[RelationName]['Row'];
-  };
-  Returns: any;
-} ? FieldName$1 : never : never;
-type GetComputedFields<Schema extends GenericSchema, RelationName extends keyof TablesAndViews$2<Schema>> = { [K in keyof TablesAndViews$2<Schema>[RelationName]['Row']]: ComputedField<Schema, RelationName, K> }[keyof TablesAndViews$2<Schema>[RelationName]['Row']];
-//#endregion
-//#region src/types/types.d.ts
-/**
- * Response format
- *
- * {@link https://github.com/supabase/supabase-js/issues/32}
- */
-interface PostgrestResponseBase {
-  /** HTTP status code of the response. */
+declare class StorageApiError extends StorageError {
   status: number;
+  statusCode: string;
   /**
-   * HTTP reason phrase of the response, e.g. `"OK"`.
-   *
-   * May be an empty string: HTTP/2 and HTTP/3 don't carry reason phrases, so
-   * responses over those protocols (e.g. browser requests to Supabase) have no
-   * `statusText`. Rely on `status` instead of this value.
+   * Service-specific error code from the Storage API response body, such as
+   * `NoSuchKey`, `AccessDenied` or `ResourceAlreadyExists`. Use this to branch
+   * on the specific error rather than parsing the message.
+   * @see https://supabase.com/docs/guides/storage/debugging/error-codes
    */
-  statusText: string;
+  code: string | undefined;
+  constructor(message: string, status: number, statusCode: string, namespace?: ErrorNamespace, code?: string);
+  toJSON(): {
+    name: string;
+    message: string;
+    status: number | undefined;
+    statusCode: string | undefined;
+    code: string | undefined;
+  };
 }
-interface PostgrestResponseSuccess<T> extends PostgrestResponseBase {
-  success: true;
-  error: null;
-  data: T;
-  count: number | null;
-}
-interface PostgrestResponseFailure extends PostgrestResponseBase {
-  success: false;
-  error: PostgrestError;
-  data: null;
-  count: null;
-}
-type PostgrestSingleResponse<T> = PostgrestResponseSuccess<T> | PostgrestResponseFailure;
-type PostgrestMaybeSingleResponse<T> = PostgrestSingleResponse<T | null>;
-type PostgrestResponse<T> = PostgrestSingleResponse<T[]>;
 /**
- * OpenAPI description served by PostgREST at the REST root (`GET /`).
- *
- * PostgREST emits OpenAPI 2.0 (Swagger), so the version lives in `swagger`.
- * OpenAPI 2.0 requires only `swagger`, `info` and `paths`; a PostgREST
- * `db-root-spec` override may leave out any other field. Only the top level
- * is typed here; the contents of `paths`, `definitions` and `parameters`
- * follow the OpenAPI 2.0 specification and vary with the PostgREST version.
- *
- * {@link https://docs.postgrest.org/en/stable/references/api/openapi.html}
+ * Unknown error that doesn't match expected error patterns
+ * Wraps the original error for debugging
  */
-interface PostgrestOpenApiSpec {
-  swagger: string;
-  info: Record<string, unknown>;
-  host?: string;
-  basePath?: string;
-  paths: Record<string, Record<string, unknown>>;
-  definitions?: Record<string, Record<string, unknown>>;
-  parameters?: Record<string, Record<string, unknown>>;
-  [key: string]: unknown;
+declare class StorageUnknownError extends StorageError {
+  originalError: unknown;
+  constructor(message: string, originalError: unknown, namespace?: ErrorNamespace);
 }
-type Prettify<T> = { [K in keyof T]: T[K] } & {};
-type RejectExcessProperties<Base, Row> = Row & { [K in Exclude<keyof Row, keyof Base>]: never };
-type SimplifyDeep<Type, ExcludeType = never> = ConditionalSimplifyDeep<Type, ExcludeType | NonRecursiveType | Set<unknown> | Map<unknown, unknown>, object>;
-type ConditionalSimplifyDeep<Type, ExcludeType = never, IncludeType = unknown> = Type extends ExcludeType ? Type : Type extends IncludeType ? { [TypeKey in keyof Type]: ConditionalSimplifyDeep<Type[TypeKey], ExcludeType, IncludeType> } : Type;
-type NonRecursiveType = BuiltIns | Function | (new (...arguments_: any[]) => unknown);
-type BuiltIns = Primitive | void | Date | RegExp;
-type Primitive = null | undefined | string | number | boolean | symbol | bigint;
-type IsValidResultOverride<Result$1, NewResult, ErrorResult, ErrorNewResult> = Result$1 extends any[] ? NewResult extends any[] ? true : ErrorResult : NewResult extends any[] ? ErrorNewResult : true;
 /**
- * Utility type to check if array types match between Result and NewResult.
- * Returns either the valid NewResult type or an error message type.
+ * @deprecated Use StorageError with namespace='vectors' instead
+ * Alias for backward compatibility with existing vector storage code
  */
-type CheckMatchingArrayTypes<Result$1, NewResult> = Result$1 extends SelectQueryError<string> ? NewResult : IsValidResultOverride<Result$1, NewResult, {
-  Error: 'Type mismatch: Cannot cast array result to a single object. Use .overrideTypes<Array<YourType>> or .returns<Array<YourType>> (deprecated) for array results or .single() to convert the result to a single object';
-}, {
-  Error: 'Type mismatch: Cannot cast single object to array type. Remove Array wrapper from return type or make sure you are not using .single() up in the calling chain';
-}> extends infer ValidationResult ? ValidationResult extends true ? ContainsNull<Result$1> extends true ? NewResult | null : NewResult : ValidationResult : never;
-type Simplify<T> = T extends object ? { [K in keyof T]: T[K] } : T;
-type ExplicitKeys<T> = { [K in keyof T]: string extends K ? never : K }[keyof T];
-type MergeExplicit<New, Row> = { [K in ExplicitKeys<New> | ExplicitKeys<Row>]: K extends keyof New ? K extends keyof Row ? Row[K] extends SelectQueryError<string> ? New[K] : New[K] extends any[] ? Row[K] extends any[] ? Array<Simplify<MergeDeep<NonNullable<New[K][number]>, NonNullable<Row[K][number]>>>> : New[K] : IsPlainObject<NonNullable<New[K]>> extends true ? IsPlainObject<NonNullable<Row[K]>> extends true ? ContainsNull<New[K]> extends true ?
-// If the override wants to preserve optionality
-Simplify<MergeDeep<NonNullable<New[K]>, NonNullable<Row[K]>>> | null : Simplify<MergeDeep<New[K], NonNullable<Row[K]>>> : New[K] : New[K] : New[K] : K extends keyof Row ? Row[K] : never };
-type MergeDeep<New, Row> = Simplify<MergeExplicit<New, Row> & (string extends keyof Row ? {
-  [K: string]: Row[string];
-} : {})>;
-type IsPlainObject<T> = T extends any[] ? false : T extends object ? true : false;
-type MergePartialResult<NewResult, Result$1, Options> = Options extends {
-  merge: true;
-} ? Result$1 extends any[] ? NewResult extends any[] ? Array<Simplify<MergeDeep<NewResult[number], Result$1[number]>>> : never : Simplify<MergeDeep<NewResult, Result$1>> : NewResult;
+declare class StorageVectorsError extends StorageError {
+  constructor(message: string);
+}
+/**
+ * Type guard to check if an error is a StorageVectorsError
+ * @param error - The error to check
+ * @returns True if the error is a StorageVectorsError
+ */
+declare function isStorageVectorsError(error: unknown): error is StorageVectorsError;
+/**
+ * @deprecated Use StorageApiError with namespace='vectors' instead
+ * Alias for backward compatibility with existing vector storage code
+ */
+declare class StorageVectorsApiError extends StorageApiError {
+  constructor(message: string, status: number, statusCode: string);
+}
+/**
+ * @deprecated Use StorageUnknownError with namespace='vectors' instead
+ * Alias for backward compatibility with existing vector storage code
+ */
+declare class StorageVectorsUnknownError extends StorageUnknownError {
+  constructor(message: string, originalError: unknown);
+}
+/**
+ * Error codes specific to S3 Vectors API
+ * Maps AWS service errors to application-friendly error codes
+ */
+declare enum StorageVectorsErrorCode {
+  /** Internal server fault (HTTP 500) */
+  InternalError = "InternalError",
+  /** Resource already exists / conflict (HTTP 409) */
+  S3VectorConflictException = "S3VectorConflictException",
+  /** Resource not found (HTTP 404) */
+  S3VectorNotFoundException = "S3VectorNotFoundException",
+  /** Delete bucket while not empty (HTTP 400) */
+  S3VectorBucketNotEmpty = "S3VectorBucketNotEmpty",
+  /** Exceeds bucket quota/limit (HTTP 400) */
+  S3VectorMaxBucketsExceeded = "S3VectorMaxBucketsExceeded",
+  /** Exceeds index quota/limit (HTTP 400) */
+  S3VectorMaxIndexesExceeded = "S3VectorMaxIndexesExceeded",
+}
 //#endregion
-//#region src/PostgrestBuilder.d.ts
-declare abstract class PostgrestBuilder<ClientOptions extends ClientServerOptions, Result$1, ThrowOnError extends boolean = false> implements PromiseLike<ThrowOnError extends true ? PostgrestResponseSuccess<Result$1> : PostgrestSingleResponse<Result$1>> {
-  protected method: 'GET' | 'HEAD' | 'POST' | 'PATCH' | 'DELETE';
-  protected url: URL;
-  protected headers: Headers;
-  protected schema?: string;
-  protected body?: unknown;
-  protected shouldThrowOnError: boolean;
-  protected signal?: AbortSignal;
+//#region src/lib/types.d.ts
+/**
+ * Type of storage bucket
+ * - STANDARD: Regular file storage buckets
+ * - ANALYTICS: Iceberg table-based buckets for analytical workloads
+ */
+type BucketType = 'STANDARD' | 'ANALYTICS' | (string & {});
+/**
+ * Bucket-level object versioning status, as reported by the API.
+ * - DISABLED: versioning has never been enabled for the bucket (the implicit starting state)
+ * - ENABLED: new object writes create new versions
+ * - SUSPENDED: versioning was enabled, then suspended
+ */
+type VersioningStatus = 'DISABLED' | 'ENABLED' | 'SUSPENDED';
+/**
+ * Bucket-level object versioning status that can be set via `createBucket`.
+ * `SUSPENDED` is excluded: it only makes sense for a bucket that has already
+ * had versioning enabled at some point - a brand-new bucket with no history
+ * should just start `DISABLED` instead.
+ */
+type CreateSettableVersioningStatus = Exclude<VersioningStatus, 'SUSPENDED'>;
+/**
+ * Bucket-level object versioning status that can be set via `updateBucket`.
+ * `DISABLED` is excluded: it's never a legal destination, since there's no
+ * transition back to it once versioning has been touched.
+ */
+type UpdateSettableVersioningStatus = Exclude<VersioningStatus, 'DISABLED'>;
+/**
+ * Whether a lifecycle rule runs.
+ * `Enabled` applies the rule. `Disabled` keeps it stored but inactive.
+ */
+type LifecycleRuleStatus = 'Enabled' | 'Disabled';
+/**
+ * When to expire noncurrent object versions (previous versions of an object).
+ *
+ * `noncurrentDays` is how old a noncurrent version must be before it can
+ * expire. `newerNoncurrentVersions` keeps that many of the newest noncurrent
+ * versions regardless of age, then expires the rest. Allowed range is 1 to 100.
+ */
+interface NoncurrentVersionExpiration {
+  noncurrentDays: number;
+  newerNoncurrentVersions?: number;
+}
+/**
+ * Object filter for a lifecycle rule.
+ *
+ * Currently only `{}` is accepted. Prefix, tag, and size filters are rejected.
+ */
+type LifecycleRuleFilter = Record<string, never>;
+/**
+ * One lifecycle rule.
+ *
+ * Today the only action is `noncurrentVersionExpiration`. `filter` is required
+ * and must be `{}`. `id` is optional. The server generates one if you omit it.
+ */
+interface LifecycleRule {
+  id?: string;
+  status: LifecycleRuleStatus;
+  filter: LifecycleRuleFilter;
+  noncurrentVersionExpiration: NoncurrentVersionExpiration;
+}
+/**
+ * Lifecycle policy stored on a bucket.
+ * 1 to 1000 rules. Rule IDs must be unique when you set them.
+ */
+interface BucketLifecycleConfiguration {
+  rules: LifecycleRule[];
+}
+interface Bucket {
+  id: string;
+  type?: BucketType;
+  name: string;
+  owner: string;
+  file_size_limit?: number;
+  allowed_mime_types?: string[];
+  created_at: string;
+  updated_at: string;
+  public: boolean;
+  versioning_status?: VersioningStatus;
+}
+interface ListBucketOptions {
+  limit?: number;
+  offset?: number;
+  sortColumn?: 'id' | 'name' | 'created_at' | 'updated_at';
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+}
+interface PurgeCacheOptions {
+  /**
+   * If true, purges only the transformations (resized/formatted variants) for the object or bucket,
+   * leaving the original cached file intact. If omitted, purges all cached versions.
+   */
+  transformations?: true;
+}
+/**
+ * Represents an Analytics Bucket using Apache Iceberg table format.
+ * Analytics buckets are optimized for analytical queries and data processing.
+ */
+interface AnalyticBucket {
+  /** Unique identifier for the bucket */
+  name: string;
+  /** Bucket type - always 'ANALYTICS' for analytics buckets */
+  type: 'ANALYTICS';
+  /** Storage format used (e.g., 'iceberg') */
+  format: string;
+  /** ISO 8601 timestamp of bucket creation */
+  created_at: string;
+  /** ISO 8601 timestamp of last update */
+  updated_at: string;
+}
+/**
+ * Metadata object returned by the Storage API for files
+ * Contains information about file size, type, caching, and HTTP response details
+ */
+interface FileMetadata {
+  /** Entity tag for caching and conditional requests */
+  eTag: string;
+  /** File size in bytes */
+  size: number;
+  /** MIME type of the file */
+  mimetype: string;
+  /** Cache control directive (e.g., "max-age=3600") */
+  cacheControl: string;
+  /** Last modification timestamp (ISO 8601) */
+  lastModified: string;
+  /** Content length in bytes (usually same as size) */
+  contentLength: number;
+  /** HTTP status code from the storage backend */
+  httpStatusCode: number;
+  /** Any additional custom metadata stored with the file */
+  [key: string]: any;
+}
+/**
+ * File object returned by the List V1 API (list() method)
+ * Note: Folder entries will have null values for most fields except name
+ *
+ * Warning: Some fields may not be present in all API responses. Fields like
+ * bucket_id, owner, and buckets are not returned by list() operations.
+ */
+interface FileObject {
+  /** File or folder name (relative to the prefix) - always present */
+  name: string;
+  /** Unique identifier for the file (null for folders) */
+  id: string | null;
+  /** Last update timestamp (null for folders) */
+  updated_at: string | null;
+  /** Creation timestamp (null for folders) */
+  created_at: string | null;
+  /** @deprecated Last access timestamp (null for folders) */
+  last_accessed_at: string | null;
+  /** File metadata including size, mimetype, etc. (null for folders) */
+  metadata: FileMetadata | null;
+  /**
+   * @deprecated Bucket identifier - NOT returned by list() operations.
+   * May be present in remove() responses. Do not rely on this field.
+   */
+  bucket_id?: string;
+  /**
+   * @deprecated Owner identifier - NOT returned by list() or remove() operations.
+   * This field should not be relied upon.
+   */
+  owner?: string;
+  /**
+   * @deprecated Bucket object - NOT returned by list() or remove() operations.
+   * This field should not be relied upon.
+   */
+  buckets?: Bucket;
+  /** Version identifier for this object (null for folders, omitted on older schemas) */
+  version?: string | null;
+  /** Timestamp at which this version was archived */
+  archived_at?: string | null;
+  /** Whether this entry is a delete marker rather than a real object version (null for folders, omitted on older schemas) */
+  is_delete_marker?: boolean | null;
+  /** Whether this object was created while the bucket had versioning enabled (null for folders, omitted on older schemas) */
+  is_versioned?: boolean | null;
+}
+/**
+ * File object returned by the Info endpoint (info() method)
+ * Contains detailed metadata for a specific file
+ */
+interface FileObjectV2 {
+  /** Unique identifier for the file */
+  id: string;
+  /** File version identifier */
+  version: string;
+  /** File name */
+  name: string;
+  /** Bucket identifier */
+  bucket_id: string;
+  /** Creation timestamp */
+  created_at: string;
+  /** File size in bytes */
+  size?: number;
+  /** Cache control header value */
+  cache_control?: string;
+  /** MIME content type */
+  content_type?: string;
+  /** Entity tag for caching */
+  etag?: string;
+  /** Last modification timestamp (replaces updated_at) */
+  last_modified?: string;
+  /** Custom file metadata */
+  metadata?: FileMetadata;
+  /**
+   * @deprecated The API returns last_modified instead.
+   * This field may not be present in responses.
+   */
+  updated_at?: string;
+  /** Timestamp at which this version was archived */
+  archived_at?: string | null;
+  /** Whether this entry is a delete marker rather than a real object version */
+  is_delete_marker?: boolean;
+  /** Whether this object was created while the bucket had versioning enabled */
+  is_versioned?: boolean;
+}
+interface SortBy {
+  column?: string;
+  order?: string;
+}
+interface FileOptions {
+  /**
+   * The number of seconds the asset is cached in the browser and in the Supabase CDN. This is set in the `Cache-Control: max-age=<seconds>` header. Defaults to 3600 seconds.
+   */
+  cacheControl?: string;
+  /**
+   * the `Content-Type` header value. Should be specified if using a `fileBody` that is neither `Blob` nor `File` nor `FormData`, otherwise will default to `text/plain;charset=UTF-8`.
+   */
+  contentType?: string;
+  /**
+   * When upsert is set to true, the file is overwritten if it exists. When set to false, an error is thrown if the object already exists. Defaults to false.
+   */
+  upsert?: boolean;
+  /**
+   * The duplex option is a string parameter that enables or disables duplex streaming, allowing for both reading and writing data in the same stream. It can be passed as an option to the fetch() method.
+   */
+  duplex?: string;
+  /**
+   * The metadata option is an object that allows you to store additional information about the file. This information can be used to filter and search for files. The metadata object can contain any key-value pairs you want to store.
+   */
+  metadata?: Record<string, any>;
+  /**
+   * Optionally add extra headers
+   */
+  headers?: Record<string, string>;
+}
+/**
+ * An entry for `remove()`. Either a plain path (deletes whichever row is currently
+ * at that path), or an object targeting an exact `(path, versionId)`
+ */
+type DeleteObjectEntry = string | {
+  path: string;
+  versionId: string;
+};
+interface DestinationOptions {
+  destinationBucket?: string;
+  /**
+   * The version id of the source object to move/restore.
+   */
+  sourceVersionId?: string;
+}
+interface SearchOptions {
+  /**
+   * The number of files you want to be returned.
+   * @default 100
+   */
+  limit?: number;
+  /**
+   * The starting position.
+   */
+  offset?: number;
+  /**
+   * The column to sort by. Can be any column inside a FileObject.
+   */
+  sortBy?: SortBy;
+  /**
+   * The search string to filter files by.
+   */
+  search?: string;
+  /**
+   * Controls whether noncurrent object versions are included in the results.
+   * @default 'exclude'
+   */
+  noncurrentVersions?: 'exclude' | 'include' | 'only';
+  /**
+   * Controls whether delete markers are included in the results.
+   * @default 'exclude'
+   */
+  deleteMarkers?: 'exclude' | 'include' | 'only';
+  /**
+   * When true, only returns objects whose key exactly matches the given prefix.
+   */
+  exactMatch?: boolean;
+}
+interface SortByV2 {
+  column: 'name' | 'updated_at' | 'created_at';
+  order?: 'asc' | 'desc';
+}
+interface SearchV2Options {
+  /**
+   * The number of files you want to be returned.
+   * @default 1000
+   */
+  limit?: number;
+  /**
+   * The prefix search string to filter files by.
+   */
+  prefix?: string;
+  /**
+   * The cursor used for pagination. Pass the value received from nextCursor of the previous request.
+   */
+  cursor?: string;
+  /**
+   * Whether to emulate a hierarchical listing of objects using delimiters.
+   *
+   * - When `false` (default), all objects are listed as flat key/value pairs.
+   * - When `true`, the response groups objects by delimiter, making it appear
+   *   like a file/folder hierarchy.
+   *
+   * @default false
+   */
+  with_delimiter?: boolean;
+  /**
+   * The column and order to sort by
+   * @default 'name asc'
+   */
+  sortBy?: SortByV2;
+  /**
+   * Controls whether noncurrent object versions are included in the results.
+   * @default 'exclude'
+   */
+  noncurrentVersions?: 'exclude' | 'include' | 'only';
+  /**
+   * Controls whether delete markers are included in the results.
+   * @default 'exclude'
+   */
+  deleteMarkers?: 'exclude' | 'include' | 'only';
+  /**
+   * When true, only returns objects whose key exactly matches the given prefix.
+   */
+  exactMatch?: boolean;
+}
+/**
+ * File object returned by the List V2 API (listV2() method)
+ * Objects and folders are returned in separate arrays - this type represents
+ * actual files only. Use SearchV2Folder for folder entries.
+ */
+interface SearchV2Object {
+  /** File name */
+  name: string;
+  /** Full object key/path */
+  key?: string;
+  /** Unique identifier for the file */
+  id: string;
+  /** Last update timestamp */
+  updated_at: string;
+  /** Creation timestamp */
+  created_at: string;
+  /** File metadata including size, mimetype, etc. (null if not yet set) */
+  metadata: FileMetadata | null;
+  /** @deprecated Last access timestamp */
+  last_accessed_at: string;
+  /** Version identifier for this object */
+  version?: string;
+  /** Timestamp at which this version was archived */
+  archived_at?: string | null;
+  /** Whether this entry is a delete marker rather than a real object version */
+  is_delete_marker?: boolean;
+  /** Whether this object was created while the bucket had versioning enabled */
+  is_versioned?: boolean;
+}
+/**
+ * Folder entry returned by the List V2 API (listV2() method) when using with_delimiter: true
+ */
+interface SearchV2Folder {
+  /** Folder name/prefix */
+  name: string;
+  /** Full folder key/path */
+  key?: string;
+}
+interface SearchV2Result {
+  hasNext: boolean;
+  folders: SearchV2Folder[];
+  objects: SearchV2Object[];
+  nextCursor?: string;
+}
+interface FetchParameters {
+  /**
+   * Pass in an AbortController's signal to cancel the request.
+   */
+  signal?: AbortSignal;
+  /**
+   * Controls how the request interacts with the browser's HTTP cache.
+   * - 'default': Use standard cache behavior
+   * - 'no-store': Bypass cache entirely (useful in Edge Functions)
+   * - 'reload': Bypass cache but update it with response
+   * - 'no-cache': Validate with server before using cached response
+   * - 'force-cache': Use cache even if stale
+   * - 'only-if-cached': Only use cache, fail if not cached
+   */
+  cache?: 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached';
+}
+interface Metadata {
+  name: string;
+}
+interface TransformOptions {
+  /**
+   * The width of the image in pixels.
+   */
+  width?: number;
+  /**
+   * The height of the image in pixels.
+   */
+  height?: number;
+  /**
+   * The resize mode can be cover, contain or fill. Defaults to cover.
+   * Cover resizes the image to maintain it's aspect ratio while filling the entire width and height.
+   * Contain resizes the image to maintain it's aspect ratio while fitting the entire image within the width and height.
+   * Fill resizes the image to fill the entire width and height. If the object's aspect ratio does not match the width and height, the image will be stretched to fit.
+   */
+  resize?: 'cover' | 'contain' | 'fill';
+  /**
+   * Set the quality of the returned image.
+   * A number from 20 to 100, with 100 being the highest quality.
+   * Defaults to 80
+   */
+  quality?: number;
+  /**
+   * Specify the format of the image requested.
+   *
+   * When using 'origin' we force the format to be the same as the original image.
+   * When this option is not passed in, images are optimized to modern image formats like Webp.
+   */
+  format?: 'origin';
+}
+type CamelCase<S extends string> = S extends `${infer P1}_${infer P2}${infer P3}` ? `${Lowercase<P1>}${Uppercase<P2>}${CamelCase<P3>}` : S;
+type Camelize<T> = { [K in keyof T as CamelCase<Extract<K, string>>]: T[K] };
+type DownloadResult<T> = {
+  data: T;
+  error: null;
+} | {
+  data: null;
+  error: StorageError;
+};
+/**
+ * Configuration for encryption at rest
+ * @property kmsKeyArn - ARN of the KMS key used for encryption
+ * @property sseType - Server-side encryption type (e.g., 'KMS')
+ */
+interface EncryptionConfiguration {
+  kmsKeyArn?: string;
+  sseType?: string;
+}
+/**
+ * Vector bucket metadata
+ * @property vectorBucketName - Unique name of the vector bucket
+ * @property creationTime - Unix timestamp of when the bucket was created
+ * @property encryptionConfiguration - Optional encryption settings
+ */
+interface VectorBucket {
+  vectorBucketName: string;
+  creationTime?: number;
+  encryptionConfiguration?: EncryptionConfiguration;
+}
+/**
+ * Metadata configuration for vector index
+ * Defines which metadata keys should not be indexed for filtering
+ * @property nonFilterableMetadataKeys - Array of metadata keys that cannot be used in filters
+ */
+interface MetadataConfiguration {
+  nonFilterableMetadataKeys?: string[];
+}
+/**
+ * Supported data types for vectors
+ * Currently only float32 is supported
+ */
+type VectorDataType = 'float32' | (string & {});
+/**
+ * Distance metrics for vector similarity search
+ */
+type DistanceMetric = 'cosine' | 'euclidean' | 'dotproduct' | (string & {});
+/**
+ * Vector index configuration and metadata
+ * @property indexName - Unique name of the index within the bucket
+ * @property vectorBucketName - Name of the parent vector bucket
+ * @property dataType - Data type of vector components (currently only 'float32')
+ * @property dimension - Dimensionality of vectors (e.g., 384, 768, 1536)
+ * @property distanceMetric - Similarity metric used for queries
+ * @property metadataConfiguration - Configuration for metadata filtering
+ * @property creationTime - Unix timestamp of when the index was created
+ */
+interface VectorIndex {
+  indexName: string;
+  vectorBucketName: string;
+  dataType: VectorDataType;
+  dimension: number;
+  distanceMetric: DistanceMetric;
+  metadataConfiguration?: MetadataConfiguration;
+  creationTime?: number;
+}
+/**
+ * Vector data representation
+ * Vectors must be float32 arrays with dimensions matching the index
+ * @property float32 - Array of 32-bit floating point numbers
+ */
+interface VectorData {
+  float32: number[];
+}
+/**
+ * Arbitrary JSON metadata attached to vectors
+ * Keys configured as non-filterable in the index can be stored but not queried
+ */
+type VectorMetadata = Record<string, any>;
+/**
+ * Single vector object for insertion/update
+ * @property key - Unique identifier for the vector
+ * @property data - Vector embedding data
+ * @property metadata - Optional arbitrary metadata
+ */
+interface VectorObject {
+  key: string;
+  data: VectorData;
+  metadata?: VectorMetadata;
+}
+/**
+ * Vector object returned from queries with optional distance
+ * @property key - Unique identifier for the vector
+ * @property data - Vector embedding data (if requested)
+ * @property metadata - Arbitrary metadata (if requested)
+ * @property distance - Similarity distance from query vector (if requested)
+ */
+interface VectorMatch {
+  key: string;
+  data?: VectorData;
+  metadata?: VectorMetadata;
+  distance?: number;
+}
+/**
+ * Options for fetching vector buckets
+ * @property prefix - Filter buckets by name prefix
+ * @property maxResults - Maximum number of results to return (default: 100)
+ * @property nextToken - Token for pagination from previous response
+ */
+interface ListVectorBucketsOptions {
+  prefix?: string;
+  maxResults?: number;
+  nextToken?: string;
+}
+/**
+ * Response from listing vector buckets
+ * @property vectorBuckets - Array of bucket names
+ * @property nextToken - Token for fetching next page (if more results exist)
+ */
+interface ListVectorBucketsResponse {
+  vectorBuckets: {
+    vectorBucketName: string;
+  }[];
+  nextToken?: string;
+}
+/**
+ * Options for listing indexes within a bucket
+ * @property vectorBucketName - Name of the parent vector bucket
+ * @property prefix - Filter indexes by name prefix
+ * @property maxResults - Maximum number of results to return (default: 100)
+ * @property nextToken - Token for pagination from previous response
+ */
+interface ListIndexesOptions {
+  vectorBucketName: string;
+  prefix?: string;
+  maxResults?: number;
+  nextToken?: string;
+}
+/**
+ * Response from listing indexes
+ * @property indexes - Array of index names
+ * @property nextToken - Token for fetching next page (if more results exist)
+ */
+interface ListIndexesResponse {
+  indexes: {
+    indexName: string;
+  }[];
+  nextToken?: string;
+}
+/**
+ * Options for batch reading vectors
+ * @property vectorBucketName - Name of the vector bucket
+ * @property indexName - Name of the index
+ * @property keys - Array of vector keys to retrieve
+ * @property returnData - Whether to include vector data in response
+ * @property returnMetadata - Whether to include metadata in response
+ */
+interface GetVectorsOptions {
+  vectorBucketName: string;
+  indexName: string;
+  keys: string[];
+  returnData?: boolean;
+  returnMetadata?: boolean;
+}
+/**
+ * Response from getting vectors
+ * @property vectors - Array of retrieved vector objects
+ */
+interface GetVectorsResponse {
+  vectors: VectorMatch[];
+}
+/**
+ * Options for batch inserting/updating vectors
+ * @property vectorBucketName - Name of the vector bucket
+ * @property indexName - Name of the index
+ * @property vectors - Array of vectors to insert/upsert (1-500 items)
+ */
+interface PutVectorsOptions {
+  vectorBucketName: string;
+  indexName: string;
+  vectors: VectorObject[];
+}
+/**
+ * Options for batch deleting vectors
+ * @property vectorBucketName - Name of the vector bucket
+ * @property indexName - Name of the index
+ * @property keys - Array of vector keys to delete (1-500 items)
+ */
+interface DeleteVectorsOptions {
+  vectorBucketName: string;
+  indexName: string;
+  keys: string[];
+}
+/**
+ * Options for listing/scanning vectors in an index
+ * Supports parallel scanning via segment configuration
+ * @property vectorBucketName - Name of the vector bucket
+ * @property indexName - Name of the index
+ * @property maxResults - Maximum number of results to return (default: 500, max: 1000)
+ * @property nextToken - Token for pagination from previous response
+ * @property returnData - Whether to include vector data in response
+ * @property returnMetadata - Whether to include metadata in response
+ * @property segmentCount - Total number of parallel segments (1-16)
+ * @property segmentIndex - Zero-based index of this segment (0 to segmentCount-1)
+ */
+interface ListVectorsOptions {
+  vectorBucketName: string;
+  indexName: string;
+  maxResults?: number;
+  nextToken?: string;
+  returnData?: boolean;
+  returnMetadata?: boolean;
+  segmentCount?: number;
+  segmentIndex?: number;
+}
+/**
+ * Response from listing vectors
+ * @property vectors - Array of vector objects
+ * @property nextToken - Token for fetching next page (if more results exist)
+ */
+interface ListVectorsResponse {
+  vectors: VectorMatch[];
+  nextToken?: string;
+}
+/**
+ * JSON filter expression for metadata filtering
+ * Format and syntax depend on the S3 Vectors service implementation
+ */
+type VectorFilter = Record<string, any>;
+/**
+ * Options for querying similar vectors (ANN search)
+ * @property vectorBucketName - Name of the vector bucket
+ * @property indexName - Name of the index
+ * @property queryVector - Query vector to find similar vectors
+ * @property topK - Number of nearest neighbors to return (S3 vector buckets support 1-10,000; other backends may have a lower limit)
+ * @property nextToken - S3 Vectors pagination token from a previous query response
+ * @property filter - Optional JSON filter for metadata
+ * @property returnDistance - Whether to include distance scores
+ * @property returnMetadata - Whether to include metadata in results
+ */
+interface QueryVectorsOptions {
+  vectorBucketName: string;
+  indexName: string;
+  queryVector: VectorData;
+  topK: number;
+  nextToken?: string;
+  filter?: VectorFilter;
+  returnDistance?: boolean;
+  returnMetadata?: boolean;
+}
+/**
+ * Response from vector similarity query
+ * @property vectors - Array of similar vectors ordered by distance
+ * @property distanceMetric - The distance metric used for the similarity search
+ * @property nextToken - Token for fetching the next page of S3 Vectors results
+ */
+interface QueryVectorsResponse {
+  vectors: VectorMatch[];
+  distanceMetric?: DistanceMetric;
+  nextToken?: string;
+}
+/**
+ * Fetch-specific parameters like abort signals
+ * @property signal - AbortSignal for cancelling requests
+ */
+interface VectorFetchParameters {
+  signal?: AbortSignal;
+}
+/**
+ * Standard response wrapper for successful operations
+ * @property data - Response data of type T
+ * @property error - Null on success
+ */
+interface SuccessResponse<T> {
+  data: T;
+  error: null;
+}
+/**
+ * Standard response wrapper for failed operations
+ * @property data - Null on error
+ * @property error - StorageError with details (named StorageVectorsError for vector operations)
+ */
+interface ErrorResponse {
+  data: null;
+  error: StorageError;
+}
+/**
+ * Union type for all API responses
+ * Follows the pattern: { data: T, error: null } | { data: null, error: Error }
+ */
+type ApiResponse<T> = SuccessResponse<T> | ErrorResponse;
+//#endregion
+//#region src/lib/common/fetch.d.ts
+type Fetch = typeof fetch;
+//#endregion
+//#region src/lib/common/BaseApiClient.d.ts
+/**
+ * @ignore
+ * Base API client class for all Storage API classes
+ * Provides common infrastructure for error handling and configuration
+ *
+ * @typeParam TError - The error type (StorageError or subclass)
+ */
+declare abstract class BaseApiClient<TError extends StorageError = StorageError> {
+  protected url: string;
+  protected headers: {
+    [key: string]: string;
+  };
   protected fetch: Fetch;
-  protected isMaybeSingle: boolean;
-  protected shouldStripNulls: boolean;
-  protected urlLengthLimit: number;
-  protected retryEnabled: boolean;
+  protected shouldThrowOnError: boolean;
+  protected namespace: ErrorNamespace;
   /**
-   * Creates a builder configured for a specific PostgREST request.
-   *
-   * @example Using supabase-js (recommended)
-   * ```ts
-   * import { createClient } from '@supabase/supabase-js'
-   *
-   * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-   * const { data, error } = await supabase.from('users').select('*')
-   * ```
-   *
-   * @category Database
-   *
-   * @example Standalone import for bundle-sensitive environments
-   * ```ts
-   * import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
-   *
-   * const builder = new PostgrestQueryBuilder(
-   *   new URL('https://xyzcompany.supabase.co/rest/v1/users'),
-   *   { headers: new Headers({ apikey: 'your-publishable-key' }) }
-   * )
-   * ```
+   * Creates a new BaseApiClient instance
+   * @param url - Base URL for API requests
+   * @param headers - Default headers for API requests
+   * @param fetch - Optional custom fetch implementation
+   * @param namespace - Error namespace ('storage' or 'vectors')
    */
-  constructor(builder: {
-    method: 'GET' | 'HEAD' | 'POST' | 'PATCH' | 'DELETE';
-    url: URL;
-    headers: HeadersInit;
-    schema?: string;
-    body?: unknown;
-    shouldThrowOnError?: boolean;
-    signal?: AbortSignal;
-    fetch?: Fetch;
-    isMaybeSingle?: boolean;
-    shouldStripNulls?: boolean;
-    urlLengthLimit?: number;
-    retry?: boolean;
-  });
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch, namespace?: ErrorNamespace);
   /**
-   * If there's an error with the query, throwOnError will reject the promise by
-   * throwing the error instead of returning it as part of a successful response.
+   * Enable throwing errors instead of returning them.
+   * When enabled, errors are thrown instead of returned in { data, error } format.
    *
-   * {@link https://github.com/supabase/supabase-js/issues/92}
-   *
-   * @category Database
-   * @subcategory Using modifiers
+   * @returns this - For method chaining
    */
-  throwOnError(): PostgrestBuilder<ClientOptions, Result$1, true>;
+  throwOnError(): this;
   /**
-   * Strip null values from the response data. Properties with `null` values
-   * will be omitted from the returned JSON objects.
+   * Set an HTTP header for the request.
+   * Creates a shallow copy of headers to avoid mutating shared state.
    *
-   * Requires PostgREST 11.2.0+.
-   *
-   * {@link https://docs.postgrest.org/en/stable/references/api/resource_representation.html#stripped-nulls}
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .stripNulls()
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text, bio text);
-   *
-   * insert into
-   *   characters (id, name, bio)
-   * values
-   *   (1, 'Luke', null),
-   *   (2, 'Leia', 'Princess of Alderaan');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Luke"
-   *     },
-   *     {
-   *       "id": 2,
-   *       "name": "Leia",
-   *       "bio": "Princess of Alderaan"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  stripNulls(): this;
-  /**
-   * Set an HTTP header on this single PostgREST request, overriding any header
-   * with the same name set on the client.
-   *
-   * This is an advanced escape hatch for one-off needs (passing a custom
-   * `Authorization` for a single query, attaching a tracing header, etc.).
-   * Most callers do not need it: configure client-wide headers via the
-   * `headers` option when constructing the client, and authentication via
-   * Supabase Auth.
-   *
-   * @param name - HTTP header name
-   * @param value - HTTP header value
-   *
-   * @category Database
-   * @subcategory Using modifiers
+   * @param name - Header name
+   * @param value - Header value
+   * @returns this - For method chaining
    */
   setHeader(name: string, value: string): this;
   /**
-   * @category Database
-   * @subcategory Using modifiers
+   * Handles API operation with standardized error handling
+   * Eliminates repetitive try-catch blocks across all API methods
    *
-   * Configure retry behavior for this request.
+   * This wrapper:
+   * 1. Executes the operation
+   * 2. Returns { data, error: null } on success
+   * 3. Returns { data: null, error } on failure (if shouldThrowOnError is false)
+   * 4. Throws error on failure (if shouldThrowOnError is true)
    *
-   * By default, retries are enabled for idempotent requests (GET, HEAD, OPTIONS)
-   * that fail with network errors or specific HTTP status codes (503, 520).
-   * Retries use exponential backoff (1s, 2s, 4s) with a maximum of 3 attempts.
+   * @typeParam T - The expected data type from the operation
+   * @param operation - Async function that performs the API call
+   * @returns Promise with { data, error } tuple
    *
-   * @param enabled - Whether to enable retries for this request
-   *
-   * @example
-   * ```ts
-   * // Disable retries for a specific query
-   * const { data, error } = await supabase
-   *   .from('users')
-   *   .select()
-   *   .retry(false)
-   * ```
-   */
-  retry(enabled: boolean): this;
-  then<TResult1 = (ThrowOnError extends true ? PostgrestResponseSuccess<Result$1> : PostgrestSingleResponse<Result$1>), TResult2 = never>(onfulfilled?: ((value: ThrowOnError extends true ? PostgrestResponseSuccess<Result$1> : PostgrestSingleResponse<Result$1>) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): PromiseLike<TResult1 | TResult2>;
-  /**
-   * Process a fetch response and return the standardized postgrest response.
-   */
-  private processResponse;
-  /**
-   * Override the type of the returned `data`.
-   *
-   * @typeParam NewResult - The new result type to override with
-   * @deprecated Use overrideTypes<yourType, { merge: false }>() method at the end of your call chain instead
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   */
-  returns<NewResult>(): PostgrestBuilder<ClientOptions, CheckMatchingArrayTypes<Result$1, NewResult>, ThrowOnError>;
-  /**
-   * Override the type of the returned `data` field in the response.
-   *
-   * @typeParam NewResult - The new type to cast the response data to
-   * @typeParam Options - Optional type configuration (defaults to { merge: true })
-   * @typeParam Options.merge - When true, merges the new type with existing return type. When false, replaces the existing types entirely (defaults to true)
-   * @example
+   * @example Handling an operation
    * ```typescript
-   * // Merge with existing types (default behavior)
-   * const query = supabase
-   *   .from('users')
-   *   .select()
-   *   .overrideTypes<{ custom_field: string }>()
-   *
-   * // Replace existing types completely
-   * const replaceQuery = supabase
-   *   .from('users')
-   *   .select()
-   *   .overrideTypes<{ id: number; name: string }, { merge: false }>()
-   * ```
-   * @returns A PostgrestBuilder instance with the new type
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example Complete Override type of successful response
-   * ```ts
-   * const { data } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .overrideTypes<Array<MyType>, { merge: false }>()
-   * ```
-   *
-   * @exampleResponse Complete Override type of successful response
-   * ```ts
-   * let x: typeof data // MyType[]
-   * ```
-   *
-   * @example Complete Override type of object response
-   * ```ts
-   * const { data } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .maybeSingle()
-   *   .overrideTypes<MyType, { merge: false }>()
-   * ```
-   *
-   * @exampleResponse Complete Override type of object response
-   * ```ts
-   * let x: typeof data // MyType | null
-   * ```
-   *
-   * @example Partial Override type of successful response
-   * ```ts
-   * const { data } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .overrideTypes<Array<{ status: "A" | "B" }>>()
-   * ```
-   *
-   * @exampleResponse Partial Override type of successful response
-   * ```ts
-   * let x: typeof data // Array<CountryRowProperties & { status: "A" | "B" }>
-   * ```
-   *
-   * @example Partial Override type of object response
-   * ```ts
-   * const { data } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .maybeSingle()
-   *   .overrideTypes<{ status: "A" | "B" }>()
-   * ```
-   *
-   * @exampleResponse Partial Override type of object response
-   * ```ts
-   * let x: typeof data // CountryRowProperties & { status: "A" | "B" } | null
-   * ```
-   *
-   * @example Merge vs replace existing types
-   * ```typescript
-   * // Merge with existing types (default behavior)
-   * const query = supabase
-   *   .from('users')
-   *   .select()
-   *   .overrideTypes<{ custom_field: string }>()
-   *
-   * // Replace existing types completely
-   * const replaceQuery = supabase
-   *   .from('users')
-   *   .select()
-   *   .overrideTypes<{ id: number; name: string }, { merge: false }>()
+   * async listBuckets() {
+   *   return this.handleOperation(async () => {
+   *     return await get(this.fetch, `${this.url}/bucket`, {
+   *       headers: this.headers,
+   *     })
+   *   })
+   * }
    * ```
    */
-  overrideTypes<NewResult, Options extends {
-    merge?: boolean;
-  } = {
-    merge: true;
-  }>(): PostgrestBuilder<ClientOptions, IsValidResultOverride<Result$1, NewResult, false, false> extends true ? ContainsNull<Result$1> extends true ? MergePartialResult<NewResult, NonNullable<Result$1>, Options> | null : MergePartialResult<NewResult, Result$1, Options> : CheckMatchingArrayTypes<Result$1, NewResult>, ThrowOnError>;
+  protected handleOperation<T>(operation: () => Promise<T>): Promise<{
+    data: T;
+    error: null;
+  } | {
+    data: null;
+    error: TError;
+  }>;
 }
 //#endregion
-//#region src/types/feature-flags.d.ts
-type IsPostgrest13<PostgrestVersion extends string | undefined> = PostgrestVersion extends `13${string}` ? true : false;
-type IsPostgrest14<PostgrestVersion extends string | undefined> = PostgrestVersion extends `14${string}` ? true : false;
-type IsPostgrestVersionGreaterThan12<PostgrestVersion extends string | undefined> = IsPostgrest13<PostgrestVersion> extends true ? true : IsPostgrest14<PostgrestVersion> extends true ? true : false;
-type MaxAffectedEnabled<PostgrestVersion extends string | undefined> = IsPostgrestVersionGreaterThan12<PostgrestVersion> extends true ? true : false;
-type SpreadOnManyEnabled<PostgrestVersion extends string | undefined> = IsPostgrestVersionGreaterThan12<PostgrestVersion> extends true ? true : false;
+//#region src/packages/StreamDownloadBuilder.d.ts
+declare class StreamDownloadBuilder implements Promise<DownloadResult<ReadableStream>> {
+  private downloadFn;
+  private shouldThrowOnError;
+  readonly [Symbol.toStringTag]: string;
+  private promise;
+  constructor(downloadFn: () => Promise<Response>, shouldThrowOnError: boolean);
+  then<TResult1 = DownloadResult<ReadableStream>, TResult2 = never>(onfulfilled?: ((value: DownloadResult<ReadableStream>) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null): Promise<DownloadResult<ReadableStream> | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<DownloadResult<ReadableStream>>;
+  private getPromise;
+  private execute;
+}
 //#endregion
-//#region src/select-query-parser/result.d.ts
-/**
- * Main entry point for constructing the result type of a PostgREST query.
- *
- * @param Schema - Database schema.
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Relationships - Relationships of the current table.
- * @param Query - The select query string literal to parse.
- */
-type GetResult<Schema extends GenericSchema, Row extends Record<string, unknown>, RelationName, Relationships, Query extends string, ClientOptions extends ClientServerOptions> = IsAny$1<Schema> extends true ? ParseQuery<Query> extends infer ParsedQuery ? ParsedQuery extends Ast.Node[] ? RelationName extends string ? ProcessNodesWithoutSchema<ParsedQuery> : any : ParsedQuery : any : Relationships extends null ? ParseQuery<Query> extends infer ParsedQuery ? ParsedQuery extends Ast.Node[] ? RPCCallNodes<ParsedQuery, RelationName extends string ? RelationName : 'rpc_call', Row> : ParsedQuery : Row : ParseQuery<Query> extends infer ParsedQuery ? ParsedQuery extends Ast.Node[] ? RelationName extends string ? Relationships extends GenericRelationship[] ? ProcessNodes<ClientOptions, Schema, Row, RelationName, Relationships, ParsedQuery> : SelectQueryError<'Invalid Relationships cannot infer result type'> : SelectQueryError<'Invalid RelationName cannot infer result type'> : ParsedQuery : never;
-type ProcessSimpleFieldWithoutSchema<Field$1 extends Ast.FieldNode> = Field$1['aggregateFunction'] extends AggregateFunctions ? { [K in GetFieldNodeResultName<Field$1>]: Field$1['castType'] extends PostgreSQLTypes ? TypeScriptTypes<Field$1['castType']> : number } : { [K in GetFieldNodeResultName<Field$1>]: Field$1['castType'] extends PostgreSQLTypes ? TypeScriptTypes<Field$1['castType']> : any };
-type ProcessFieldNodeWithoutSchema<Node$1 extends Ast.FieldNode> = IsNonEmptyArray<Node$1['children']> extends true ? { [K in GetFieldNodeResultName<Node$1>]: Node$1['children'] extends Ast.Node[] ? ProcessNodesWithoutSchema<Node$1['children']>[] : ProcessSimpleFieldWithoutSchema<Node$1> } : ProcessSimpleFieldWithoutSchema<Node$1>;
-/**
- * Processes a single Node without schema and returns the resulting TypeScript type.
- */
-type ProcessNodeWithoutSchema<Node$1 extends Ast.Node> = Node$1 extends Ast.StarNode ? any : Node$1 extends Ast.SpreadNode ? Node$1['target']['children'] extends Ast.StarNode[] ? any : Node$1['target']['children'] extends Ast.FieldNode[] ? { [P in Node$1['target']['children'][number] as GetFieldNodeResultName<P>]: P['castType'] extends PostgreSQLTypes ? TypeScriptTypes<P['castType']> : any } : any : Node$1 extends Ast.FieldNode ? ProcessFieldNodeWithoutSchema<Node$1> : any;
-/**
- * Processes nodes when Schema is any, providing basic type inference
- */
-type ProcessNodesWithoutSchema<Nodes$1 extends Ast.Node[], Acc extends Record<string, unknown> = {}> = Nodes$1 extends [infer FirstNode, ...infer RestNodes] ? FirstNode extends Ast.Node ? RestNodes extends Ast.Node[] ? ProcessNodeWithoutSchema<FirstNode> extends infer FieldResult ? FieldResult extends Record<string, unknown> ? ProcessNodesWithoutSchema<RestNodes, Acc & FieldResult> : FieldResult : any : any : any : Prettify<Acc>;
-/**
- * Processes a single Node from a select chained after a rpc call
- *
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current rpc function
- * @param NodeType - The Node to process.
- */
-type ProcessRPCNode<Row extends Record<string, unknown>, RelationName extends string, NodeType extends Ast.Node> = NodeType['type'] extends Ast.StarNode['type'] ? Row : NodeType['type'] extends Ast.FieldNode['type'] ? ProcessSimpleField<Row, RelationName, Extract<NodeType, Ast.FieldNode>> : SelectQueryError<'RPC Unsupported node type.'>;
-/**
- * Process select call that can be chained after an rpc call
- */
-type RPCCallNodes<Nodes$1 extends Ast.Node[], RelationName extends string, Row extends Record<string, unknown>, Acc extends Record<string, unknown> = {}> = Nodes$1 extends [infer FirstNode, ...infer RestNodes] ? FirstNode extends Ast.Node ? RestNodes extends Ast.Node[] ? ProcessRPCNode<Row, RelationName, FirstNode> extends infer FieldResult ? FieldResult extends Record<string, unknown> ? RPCCallNodes<RestNodes, RelationName, Row, Acc & FieldResult> : FieldResult extends SelectQueryError<infer E> ? SelectQueryError<E> : SelectQueryError<'Could not retrieve a valid record or error value'> : SelectQueryError<'Processing node failed.'> : SelectQueryError<'Invalid rest nodes array in RPC call'> : SelectQueryError<'Invalid first node in RPC call'> : Prettify<Acc>;
-/**
- * Recursively processes an array of Nodes and accumulates the resulting TypeScript type.
- *
- * @param Schema - Database schema.
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Relationships - Relationships of the current table.
- * @param Nodes - An array of AST nodes to process.
- * @param Acc - Accumulator for the constructed type.
- */
-type ProcessNodes<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Row extends Record<string, unknown>, RelationName extends string, Relationships extends GenericRelationship[], Nodes$1 extends Ast.Node[], Acc extends Record<string, unknown> = {}> = CheckDuplicateEmbededReference<Schema, RelationName, Relationships, Nodes$1> extends false ? Nodes$1 extends [infer FirstNode, ...infer RestNodes] ? FirstNode extends Ast.Node ? RestNodes extends Ast.Node[] ? ProcessNode<ClientOptions, Schema, Row, RelationName, Relationships, FirstNode> extends infer FieldResult ? FieldResult extends Record<string, unknown> ? ProcessNodes<ClientOptions, Schema, Row, RelationName, Relationships, RestNodes, Acc & FieldResult> : FieldResult extends SelectQueryError<infer E> ? SelectQueryError<E> : SelectQueryError<'Could not retrieve a valid record or error value'> : SelectQueryError<'Processing node failed.'> : SelectQueryError<'Invalid rest nodes array type in ProcessNodes'> : SelectQueryError<'Invalid first node type in ProcessNodes'> : Prettify<Acc> : Prettify<CheckDuplicateEmbededReference<Schema, RelationName, Relationships, Nodes$1>>;
-/**
- * Processes a single Node and returns the resulting TypeScript type.
- *
- * @param Schema - Database schema.
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Relationships - Relationships of the current table.
- * @param NodeType - The Node to process.
- */
-type ProcessNode<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Row extends Record<string, unknown>, RelationName extends string, Relationships extends GenericRelationship[], NodeType extends Ast.Node> = NodeType['type'] extends Ast.StarNode['type'] ? GetComputedFields<Schema, RelationName> extends never ? Row : Omit<Row, GetComputedFields<Schema, RelationName>> : NodeType['type'] extends Ast.SpreadNode['type'] ? ProcessSpreadNode<ClientOptions, Schema, Row, RelationName, Relationships, Extract<NodeType, Ast.SpreadNode>> : NodeType['type'] extends Ast.FieldNode['type'] ? ProcessFieldNode<ClientOptions, Schema, Row, RelationName, Relationships, Extract<NodeType, Ast.FieldNode>> : SelectQueryError<'Unsupported node type.'>;
-/**
- * Processes a FieldNode and returns the resulting TypeScript type.
- *
- * @param Schema - Database schema.
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Relationships - Relationships of the current table.
- * @param Field - The FieldNode to process.
- */
-type ProcessFieldNode<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Row extends Record<string, unknown>, RelationName extends string, Relationships extends GenericRelationship[], Field$1 extends Ast.FieldNode> = Field$1['children'] extends [] ? ProcessEmbeddedResource<ClientOptions, Schema, Relationships, Field$1, RelationName> : IsNonEmptyArray<Field$1['children']> extends true ? ProcessEmbeddedResource<ClientOptions, Schema, Relationships, Field$1, RelationName> : ProcessSimpleField<Row, RelationName, Field$1>;
-type ResolveJsonPathType<Value, Path extends string | undefined, CastType$1 extends PostgreSQLTypes> = Path extends string ? JsonPathToType<Value, Path> extends never ? TypeScriptTypes<CastType$1> : JsonPathToType<Value, Path> extends infer PathResult ? PathResult extends string ? PathResult : IsStringUnion<PathResult> extends true ? PathResult : CastType$1 extends 'json' ? PathResult : TypeScriptTypes<CastType$1> : TypeScriptTypes<CastType$1> : TypeScriptTypes<CastType$1>;
-/**
- * Processes a simple field (without embedded resources).
- *
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Field - The FieldNode to process.
- */
-type ProcessSimpleField<Row extends Record<string, unknown>, RelationName extends string, Field$1 extends Ast.FieldNode> = Field$1['name'] extends keyof Row | 'count' ? Field$1['aggregateFunction'] extends AggregateFunctions ? { [K in GetFieldNodeResultName<Field$1>]: Field$1['castType'] extends PostgreSQLTypes ? TypeScriptTypes<Field$1['castType']> : number } : { [K in GetFieldNodeResultName<Field$1>]: Field$1['castType'] extends PostgreSQLTypes ? ResolveJsonPathType<Row[Field$1['name']], Field$1['jsonPath'], Field$1['castType']> : Row[Field$1['name']] } : SelectQueryError<`column '${Field$1['name']}' does not exist on '${RelationName}'.`>;
-/**
- * Processes an embedded resource (relation).
- *
- * @param Schema - Database schema.
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Relationships - Relationships of the current table.
- * @param Field - The FieldNode to process.
- */
-type ProcessEmbeddedResource<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Relationships extends GenericRelationship[], Field$1 extends Ast.FieldNode, CurrentTableOrView extends keyof TablesAndViews$2<Schema> & string> = ResolveRelationship<Schema, Relationships, Field$1, CurrentTableOrView> extends infer Resolved ? Resolved extends {
-  scalarType: infer ScalarType;
-  relation: {
-    isSetofReturn?: boolean;
-    isNotNullable?: boolean;
-  };
-} ? { [K in GetFieldNodeResultName<Field$1>]: Resolved['relation']['isSetofReturn'] extends true ? ScalarType : Resolved['relation']['isNotNullable'] extends true ? ScalarType : ScalarType | null } : Resolved extends {
-  referencedTable: Pick<GenericTable, 'Row' | 'Relationships'>;
-  relation: GenericRelationship & {
-    match: 'refrel' | 'col' | 'fkname' | 'func';
-  };
-  direction: string;
-} ? Field$1['children'] extends [] ? {} : ProcessEmbeddedResourceResult<ClientOptions, Schema, Resolved, Field$1, CurrentTableOrView> : { [K in GetFieldNodeResultName<Field$1>]: Resolved } : { [K in GetFieldNodeResultName<Field$1>]: SelectQueryError<'Failed to resolve relationship.'> & string };
-/**
- * Helper type to process the result of an embedded resource.
- */
-type ProcessEmbeddedResourceResult<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Resolved$1 extends {
-  referencedTable: Pick<GenericTable, 'Row' | 'Relationships'>;
-  relation: GenericRelationship & {
-    match: 'refrel' | 'col' | 'fkname' | 'func';
-    isNotNullable?: boolean;
-    referencedRelation: string;
-    isSetofReturn?: boolean;
-  };
-  direction: string;
-}, Field$1 extends Ast.FieldNode, CurrentTableOrView extends keyof TablesAndViews$2<Schema>> = ProcessNodes<ClientOptions, Schema, Resolved$1['referencedTable']['Row'], Resolved$1['relation']['match'] extends 'func' ? Resolved$1['relation']['referencedRelation'] : Field$1['name'], Resolved$1['referencedTable']['Relationships'], Field$1['children'] extends undefined ? [] : Exclude<Field$1['children'], undefined> extends Ast.Node[] ? Exclude<Field$1['children'], undefined> : []> extends infer ProcessedChildren ? { [K in GetFieldNodeResultName<Field$1>]: Resolved$1['direction'] extends 'forward' ? Field$1 extends {
-  innerJoin: true;
-} ? Resolved$1['relation']['isOneToOne'] extends true ? ProcessedChildren : ProcessedChildren[] : Resolved$1['relation']['isOneToOne'] extends true ? Resolved$1['relation']['match'] extends 'func' ? Resolved$1['relation']['isNotNullable'] extends true ? Resolved$1['relation']['isSetofReturn'] extends true ? ProcessedChildren : { [P in keyof ProcessedChildren]: ProcessedChildren[P] | null } : ProcessedChildren | null : ProcessedChildren | null : ProcessedChildren[] : Resolved$1['relation']['referencedRelation'] extends CurrentTableOrView ? Resolved$1['relation'] extends {
-  hint: string;
-} ? ProcessedChildren[] : Resolved$1['relation']['match'] extends 'col' ? IsRelationNullable<TablesAndViews$2<Schema>[CurrentTableOrView], Resolved$1['relation']> extends true ? ProcessedChildren | null : ProcessedChildren : ProcessedChildren[] : IsRelationNullable<TablesAndViews$2<Schema>[CurrentTableOrView], Resolved$1['relation']> extends true ? Field$1 extends {
-  innerJoin: true;
-} ? ProcessedChildren : ProcessedChildren | null : ProcessedChildren } : { [K in GetFieldNodeResultName<Field$1>]: SelectQueryError<'Failed to process embedded resource nodes.'> & string };
-/**
- * Processes a SpreadNode by processing its target node.
- *
- * @param Schema - Database schema.
- * @param Row - The type of a row in the current table.
- * @param RelationName - The name of the current table or view.
- * @param Relationships - Relationships of the current table.
- * @param Spread - The SpreadNode to process.
- */
-type ProcessSpreadNode<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Row extends Record<string, unknown>, RelationName extends string, Relationships extends GenericRelationship[], Spread extends Ast.SpreadNode> = ProcessNode<ClientOptions, Schema, Row, RelationName, Relationships, Spread['target']> extends infer Result ? Result extends SelectQueryError<infer E> ? SelectQueryError<E> : ExtractFirstProperty<Result> extends unknown[] ? SpreadOnManyEnabled<ClientOptions['PostgrestVersion']> extends true ? ProcessManyToManySpreadNodeResult<Result> : { [K in Spread['target']['name']]: SelectQueryError<`"${RelationName}" and "${Spread['target']['name']}" do not form a many-to-one or one-to-one relationship spread not possible`> } : ProcessSpreadNodeResult<Result> : never;
-/**
- * Helper type to process the result of a many-to-many spread node.
- * Converts all fields in the spread object into arrays.
- */
-type ProcessManyToManySpreadNodeResult<Result$1> = Result$1 extends Record<string, SelectQueryError<string> | null> ? Result$1 : ExtractFirstProperty<Result$1> extends infer SpreadedObject ? SpreadedObject extends Array<Record<string, unknown>> ? { [K in keyof SpreadedObject[number]]: Array<SpreadedObject[number][K]> } : SelectQueryError<'An error occurred spreading the many-to-many object'> : SelectQueryError<'An error occurred spreading the many-to-many object'>;
-/**
- * Helper type to process the result of a spread node.
- */
-type ProcessSpreadNodeResult<Result$1> = Result$1 extends Record<string, SelectQueryError<string> | null> ? Result$1 : ExtractFirstProperty<Result$1> extends infer SpreadedObject ? ContainsNull<SpreadedObject> extends true ? Exclude<{ [K in keyof SpreadedObject]: SpreadedObject[K] | null }, null> : Exclude<{ [K in keyof SpreadedObject]: SpreadedObject[K] }, null> : SelectQueryError<'An error occurred spreading the object'>;
+//#region src/packages/BlobDownloadBuilder.d.ts
+declare class BlobDownloadBuilder implements Promise<DownloadResult<Blob>> {
+  private downloadFn;
+  private shouldThrowOnError;
+  readonly [Symbol.toStringTag]: string;
+  private promise;
+  constructor(downloadFn: () => Promise<Response>, shouldThrowOnError: boolean);
+  asStream(): StreamDownloadBuilder;
+  then<TResult1 = DownloadResult<Blob>, TResult2 = never>(onfulfilled?: ((value: DownloadResult<Blob>) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null): Promise<DownloadResult<Blob> | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<DownloadResult<Blob>>;
+  private getPromise;
+  private execute;
+}
 //#endregion
-//#region src/PostgrestTransformBuilder.d.ts
-declare class PostgrestTransformBuilder<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Row extends Record<string, unknown>, Result$1, RelationName = unknown, Relationships = unknown, Method = unknown, ThrowOnError extends boolean = false> extends PostgrestBuilder<ClientOptions, Result$1, ThrowOnError> {
-  throwOnError(): PostgrestTransformBuilder<ClientOptions, Schema, Row, Result$1, RelationName, Relationships, Method, true>;
+//#region src/packages/StorageFileApi.d.ts
+type FileBody = ArrayBuffer | ArrayBufferView | Blob | Buffer | File | FormData | NodeJS.ReadableStream | ReadableStream<Uint8Array> | URLSearchParams | string;
+declare class StorageFileApi extends BaseApiClient<StorageError> {
+  protected bucketId: string | undefined;
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, bucketId?: string, fetch?: Fetch);
   /**
-   * Perform a SELECT on the query result.
+   * Uploads a file to an existing bucket or replaces an existing file at the specified path with a new one.
    *
-   * By default, `.insert()`, `.update()`, `.upsert()`, and `.delete()` do not
-   * return modified rows. By calling this method, modified rows are returned in
-   * `data`.
-   *
-   * @param columns - The columns to retrieve, separated by commas
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example With `upsert()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .upsert({ id: 1, name: 'Han Solo' })
-   *   .select()
-   * ```
-   *
-   * @exampleSql With `upsert()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Han');
-   * ```
-   *
-   * @exampleResponse With `upsert()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Han Solo"
-   *     }
-   *   ],
-   *   "status": 201,
-   *   "statusText": ""
-   * }
-   * ```
+   * @param method HTTP method.
+   * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
+   * @param fileBody The body of the file to be stored in the bucket.
    */
-  select<Query extends string = '*', NewResultOne = GetResult<Schema, Row, RelationName, Relationships, Query, ClientOptions>>(columns?: Query): PostgrestFilterBuilder<ClientOptions, Schema, Row, Method extends 'RPC' ? Result$1 extends unknown[] ? NewResultOne[] : NewResultOne : NewResultOne[], RelationName, Relationships, Method, ThrowOnError>;
+  private uploadOrUpdate;
   /**
-   * Order the query result by `column`.
+   * Uploads a file to an existing bucket.
    *
-   * You can call this method multiple times to order by multiple columns.
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
+   * @param fileBody The body of the file to be stored in the bucket.
+   * @param fileOptions Optional file upload options including cacheControl, contentType, upsert, and metadata.
+   * @returns Promise with response containing file path, id, and fullPath or error
    *
-   * You can order referenced tables, but it only affects the ordering of the
-   * parent table if you use `!inner` in the query.
-   *
-   * @param column - The column to order by
-   * @param options - Named parameters
-   * @param options.ascending - If `true`, the result will be in ascending order
-   * @param options.nullsFirst - If `true`, `null`s appear first. If `false`,
-   * `null`s appear last.
-   * @param options.referencedTable - Set this to order a referenced table by
-   * its columns
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   */
-  order<ColumnName extends string & keyof Row>(column: ColumnName, options?: {
-    ascending?: boolean;
-    nullsFirst?: boolean;
-    referencedTable?: undefined;
-  }): this;
-  order(column: string, options?: {
-    ascending?: boolean;
-    nullsFirst?: boolean;
-    referencedTable?: string;
-  }): this;
-  /**
-   * @deprecated Use `options.referencedTable` instead of `options.foreignTable`
-   */
-  order<ColumnName extends string & keyof Row>(column: ColumnName, options?: {
-    ascending?: boolean;
-    nullsFirst?: boolean;
-    foreignTable?: undefined;
-  }): this;
-  /**
-   * @deprecated Use `options.referencedTable` instead of `options.foreignTable`
-   */
-  order(column: string, options?: {
-    ascending?: boolean;
-    nullsFirst?: boolean;
-    foreignTable?: string;
-  }): this;
-  /**
-   * Limit the query result by `rows`.
-   *
-   * @param rows - The maximum number of rows to return
-   * @param options - Named parameters
-   * @param options.referencedTable - Set this to limit rows of referenced
-   * tables instead of the parent table
-   * @param options.foreignTable - Deprecated, use `options.referencedTable`
-   * instead
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example With `select()`
-   * ```ts
+   * @example Upload file
+   * ```js
+   * const avatarFile = event.target.files[0]
    * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select('name')
-   *   .limit(1)
+   *   .storage
+   *   .from('avatars')
+   *   .upload('public/avatar1.png', avatarFile, {
+   *     cacheControl: '3600',
+   *     upsert: false
+   *   })
    * ```
    *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Luke"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example On a referenced table
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('orchestral_sections')
-   *   .select(`
-   *     name,
-   *     instruments (
-   *       name
-   *     )
-   *   `)
-   *   .limit(1, { referencedTable: 'instruments' })
-   * ```
-   *
-   * @exampleSql On a referenced table
-   * ```sql
-   * create table
-   *   orchestral_sections (id int8 primary key, name text);
-   * create table
-   *   instruments (
-   *     id int8 primary key,
-   *     section_id int8 not null references orchestral_sections,
-   *     name text
-   *   );
-   *
-   * insert into
-   *   orchestral_sections (id, name)
-   * values
-   *   (1, 'strings');
-   * insert into
-   *   instruments (id, section_id, name)
-   * values
-   *   (1, 1, 'harp'),
-   *   (2, 1, 'violin');
-   * ```
-   *
-   * @exampleResponse On a referenced table
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "strings",
-   *       "instruments": [
-   *         {
-   *           "name": "violin"
-   *         }
-   *       ]
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  limit(rows: number, {
-    foreignTable,
-    referencedTable
-  }?: {
-    foreignTable?: string;
-    referencedTable?: string;
-  }): this;
-  /**
-   * Limit the query result by starting at an offset `from` and ending at the offset `to`.
-   * Only records within this range are returned.
-   * This respects the query order and if there is no order clause the range could behave unexpectedly.
-   * The `from` and `to` values are 0-based and inclusive: `range(1, 3)` will include the second, third
-   * and fourth rows of the query.
-   *
-   * @param from - The starting index from which to limit the result
-   * @param to - The last index to which to limit the result
-   * @param options - Named parameters
-   * @param options.referencedTable - Set this to limit rows of referenced
-   * tables instead of the parent table
-   * @param options.foreignTable - Deprecated, use `options.referencedTable`
-   * instead
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select('name')
-   *   .range(0, 1)
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Luke"
-   *     },
-   *     {
-   *       "name": "Leia"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  range(from: number, to: number, {
-    foreignTable,
-    referencedTable
-  }?: {
-    foreignTable?: string;
-    referencedTable?: string;
-  }): this;
-  /**
-   * Set the AbortSignal for the fetch request.
-   *
-   * @param signal - The AbortSignal to use for the fetch request
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @remarks
-   * You can use this to set a timeout for the request.
-   *
-   * @exampleDescription Aborting requests in-flight
-   * You can use an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) to abort requests.
-   * Note that `status` and `statusText` don't mean anything for aborted requests as the request wasn't fulfilled.
-   *
-   * @example Aborting requests in-flight
-   * ```ts
-   * const ac = new AbortController()
-   *
-   * const { data, error } = await supabase
-   *   .from('very_big_table')
-   *   .select()
-   *   .abortSignal(ac.signal)
-   *
-   * // Abort the request after 100 ms
-   * setTimeout(() => ac.abort(), 100)
-   * ```
-   *
-   * @exampleResponse Aborting requests in-flight
-   * ```json
-   *   {
-   *     "error": {
-   *       "message": "AbortError: The user aborted a request.",
-   *       "details": "",
-   *       "hint": "The request was aborted locally via the provided AbortSignal.",
-   *       "code": ""
-   *     },
-   *     "status": 0,
-   *     "statusText": ""
-   *   }
-   *
-   * ```
-   *
-   * @example Set a timeout
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('very_big_table')
-   *   .select()
-   *   .abortSignal(AbortSignal.timeout(1000 /* ms *\/))
-   * ```
-   *
-   * @exampleResponse Set a timeout
-   * ```json
-   *   {
-   *     "error": {
-   *       "message": "FetchError: The user aborted a request.",
-   *       "details": "",
-   *       "hint": "",
-   *       "code": ""
-   *     },
-   *     "status": 0,
-   *     "statusText": ""
-   *   }
-   *
-   * ```
-   */
-  abortSignal(signal: AbortSignal): this;
-  /**
-   * Return `data` as a single object instead of an array of objects.
-   *
-   * Query result must be one row (e.g. using `.limit(1)`), otherwise this
-   * returns an error.
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select('name')
-   *   .limit(1)
-   *   .single()
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
+   * Response:
    * ```json
    * {
    *   "data": {
-   *     "name": "Luke"
+   *     "path": "public/avatar1.png",
+   *     "fullPath": "avatars/public/avatar1.png"
    *   },
-   *   "status": 200,
-   *   "statusText": "OK"
+   *   "error": null
    * }
    * ```
-   */
-  single<ResultOne = (Result$1 extends (infer ResultOne)[] ? ResultOne : never)>(): PostgrestBuilder<ClientOptions, ResultOne, ThrowOnError>;
-  /**
-   * Return `data` as a single object instead of an array of objects.
    *
-   * Query result must be zero or one row (e.g. using `.limit(1)`), otherwise
-   * this returns an error.
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .eq('name', 'Katniss')
-   *   .maybeSingle()
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  maybeSingle<ResultOne = (Result$1 extends (infer ResultOne)[] ? ResultOne : never)>(): PostgrestBuilder<ClientOptions, ResultOne | null, ThrowOnError>;
-  /**
-   * Return `data` as a string in CSV format.
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @exampleDescription Return data as CSV
-   * By default, the data is returned in JSON format, but can also be returned as Comma Separated Values.
-   *
-   * @example Return data as CSV
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .csv()
-   * ```
-   *
-   * @exampleSql Return data as CSV
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse Return data as CSV
-   * ```json
-   * {
-   *   "data": "id,name\n1,Luke\n2,Leia\n3,Han",
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  csv(): PostgrestBuilder<ClientOptions, string, ThrowOnError>;
-  /**
-   * Return `data` as an object in [GeoJSON](https://geojson.org) format.
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   */
-  geojson(): PostgrestBuilder<ClientOptions, Record<string, unknown>, ThrowOnError>;
-  /**
-   * Return `data` as the EXPLAIN plan for the query.
-   *
-   * You need to enable the
-   * [db_plan_enabled](https://supabase.com/docs/guides/database/debugging-performance#enabling-explain)
-   * setting before using this method.
-   *
-   * @param options - Named parameters
-   *
-   * @param options.analyze - If `true`, the query will be executed and the
-   * actual run time will be returned
-   *
-   * @param options.verbose - If `true`, the query identifier will be returned
-   * and `data` will include the output columns of the query
-   *
-   * @param options.settings - If `true`, include information on configuration
-   * parameters that affect query planning
-   *
-   * @param options.buffers - If `true`, include information on buffer usage
-   *
-   * @param options.wal - If `true`, include information on WAL record generation
-   *
-   * @param options.format - The format of the output, can be `"text"` (default)
-   * or `"json"`
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @exampleDescription Get the execution plan
-   * By default, the data is returned in TEXT format, but can also be returned as JSON by using the `format` parameter.
-   *
-   * @example Get the execution plan
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .explain()
-   * ```
-   *
-   * @exampleSql Get the execution plan
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse Get the execution plan
+   * @example Upload file using `ArrayBuffer` from base64 file data
    * ```js
-   * Aggregate  (cost=33.34..33.36 rows=1 width=112)
-   *   ->  Limit  (cost=0.00..18.33 rows=1000 width=40)
-   *         ->  Seq Scan on characters  (cost=0.00..22.00 rows=1200 width=40)
-   * ```
+   * import { decode } from 'base64-arraybuffer'
    *
-   * @exampleDescription Get the execution plan with analyze and verbose
-   * By default, the data is returned in TEXT format, but can also be returned as JSON by using the `format` parameter.
-   *
-   * @example Get the execution plan with analyze and verbose
-   * ```ts
    * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .explain({analyze:true,verbose:true})
+   *   .storage
+   *   .from('avatars')
+   *   .upload('public/avatar1.png', decode('base64FileData'), {
+   *     contentType: 'image/png'
+   *   })
    * ```
    *
-   * @exampleSql Get the execution plan with analyze and verbose
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse Get the execution plan with analyze and verbose
+   * @example Handling errors
    * ```js
-   * Aggregate  (cost=33.34..33.36 rows=1 width=112) (actual time=0.041..0.041 rows=1 loops=1)
-   *   Output: NULL::bigint, count(ROW(characters.id, characters.name)), COALESCE(json_agg(ROW(characters.id, characters.name)), '[]'::json), NULLIF(current_setting('response.headers'::text, true), ''::text), NULLIF(current_setting('response.status'::text, true), ''::text)
-   *   ->  Limit  (cost=0.00..18.33 rows=1000 width=40) (actual time=0.005..0.006 rows=3 loops=1)
-   *         Output: characters.id, characters.name
-   *         ->  Seq Scan on public.characters  (cost=0.00..22.00 rows=1200 width=40) (actual time=0.004..0.005 rows=3 loops=1)
-   *               Output: characters.id, characters.name
-   * Query Identifier: -4730654291623321173
-   * Planning Time: 0.407 ms
-   * Execution Time: 0.119 ms
-   * ```
-   */
-  explain({
-    analyze,
-    verbose,
-    settings,
-    buffers,
-    wal,
-    format
-  }?: {
-    analyze?: boolean;
-    verbose?: boolean;
-    settings?: boolean;
-    buffers?: boolean;
-    wal?: boolean;
-    format?: 'json' | 'text';
-  }): PostgrestBuilder<ClientOptions, Record<string, unknown>[], ThrowOnError> | PostgrestBuilder<ClientOptions, string, ThrowOnError>;
-  /**
-   * Dry-run this request: execute the query but discard the changes.
-   *
-   * Server-side, PostgREST runs the query inside a transaction and rolls it back
-   * instead of committing. The response still contains the data that *would* have
-   * been returned — `RETURNING` clauses execute and RLS, triggers, and constraints
-   * are all evaluated — but no row is actually inserted, updated, or deleted.
-   *
-   * This affects only the single request it is chained to. The JS caller has no
-   * handle on the transaction: supabase-js does not group multiple queries into
-   * one transaction. For multi-statement transactional logic, use a database
-   * function (`supabase.rpc(...)`).
-   *
-   * Sets the `Prefer: tx=rollback` header. See PostgREST's docs on transaction
-   * preferences for the underlying mechanism.
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   *
-   * @example Validate an insert without persisting
-   * ```ts
    * const { data, error } = await supabase
-   *   .from('countries')
-   *   .insert({ name: 'France' })
-   *   .select()
-   *   .rollback()
-   * // `data` shows what would have been inserted; nothing is saved.
+   *   .storage
+   *   .from('avatars')
+   *   .upload('public/avatar1.png', avatarFile)
+   *
+   * if (error) {
+   *   // Log the full error so fields like `statusCode` and `error` (the
+   *   // Storage error name, e.g. "Duplicate") aren't hidden behind `error.message`.
+   *   console.error(error)
+   *   return
+   * }
    * ```
-   */
-  rollback(): this;
-  /**
-   * Override the type of the returned `data`.
-   *
-   * @typeParam NewResult - The new result type to override with
-   * @deprecated Use overrideTypes<yourType, { merge: false }>() method at the end of your call chain instead
-   *
-   * @category Database
-   * @subcategory Using modifiers
    *
    * @remarks
-   * - Deprecated: use overrideTypes method instead
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: only `insert` when you are uploading new files and `select`, `insert` and `update` when you are upserting files
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   * - For React Native, using either `Blob`, `File` or `FormData` does not work as intended. Upload file using `ArrayBuffer` from base64 file data instead, see example below.
+   */
+  upload(path: string, fileBody: FileBody, fileOptions?: FileOptions): Promise<{
+    data: {
+      id: string;
+      path: string;
+      fullPath: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Upload a file with a token generated from `createSignedUploadUrl`.
    *
-   * @example Override type of successful response
-   * ```ts
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
+   * @param token The token generated from `createSignedUploadUrl`
+   * @param fileBody The body of the file to be stored in the bucket.
+   * @param fileOptions HTTP headers (cacheControl, contentType, etc.).
+   * **Note:** The `upsert` option has no effect here. To enable upsert behavior,
+   * pass `{ upsert: true }` when calling `createSignedUploadUrl()` instead.
+   * @returns Promise with response containing file path and fullPath or error
+   *
+   * @example Upload to a signed URL
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .uploadToSignedUrl('folder/cat.jpg', 'token-from-createSignedUploadUrl', file)
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "path": "folder/cat.jpg",
+   *     "fullPath": "avatars/folder/cat.jpg"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  uploadToSignedUrl(path: string, token: string, fileBody: FileBody, fileOptions?: FileOptions): Promise<{
+    data: null;
+    error: StorageError;
+  } | {
+    data: {
+      path: string;
+      fullPath: any;
+    };
+    error: null;
+  }>;
+  /**
+   * Creates a signed upload URL.
+   * Signed upload URLs can be used to upload files to the bucket without further authentication.
+   * They are valid for 2 hours.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The file path, including the current file name. For example `folder/image.png`.
+   * @param options.upsert If set to true, allows the file to be overwritten if it already exists.
+   * @returns Promise with response containing signed upload URL, token, and path or error
+   *
+   * @example Create Signed Upload URL
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .createSignedUploadUrl('folder/cat.jpg')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "signedUrl": "https://example.supabase.co/storage/v1/object/upload/sign/avatars/folder/cat.jpg?token=<TOKEN>",
+   *     "path": "folder/cat.jpg",
+   *     "token": "<TOKEN>"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `insert`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  createSignedUploadUrl(path: string, options?: {
+    upsert: boolean;
+  }): Promise<{
+    data: {
+      signedUrl: string;
+      token: string;
+      path: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Replaces an existing file at the specified path with a new one.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to update.
+   * @param fileBody The body of the file to be stored in the bucket.
+   * @param fileOptions Optional file upload options including cacheControl, contentType, and metadata.
+   * **Note:** The `upsert` option has no effect here. `update()` always replaces the
+   * file at the given path, so the `x-upsert` header is not sent. To control upsert
+   * behavior, use `upload()` instead.
+   * @returns Promise with response containing file path, id, and fullPath or error
+   *
+   * @example Update file
+   * ```js
+   * const avatarFile = event.target.files[0]
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .update('public/avatar1.png', avatarFile, {
+   *     cacheControl: '3600'
+   *   })
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "path": "public/avatar1.png",
+   *     "fullPath": "avatars/public/avatar1.png"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @example Update file using `ArrayBuffer` from base64 file data
+   * ```js
+   * import {decode} from 'base64-arraybuffer'
+   *
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .update('public/avatar1.png', decode('base64FileData'), {
+   *     contentType: 'image/png'
+   *   })
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `update` and `select`
+   * - `update()` always replaces the file at the given path regardless of the `upsert` option.
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   * - For React Native, using either `Blob`, `File` or `FormData` does not work as intended. Update file using `ArrayBuffer` from base64 file data instead, see example below.
+   */
+  update(path: string, fileBody: ArrayBuffer | ArrayBufferView | Blob | Buffer | File | FormData | NodeJS.ReadableStream | ReadableStream<Uint8Array> | URLSearchParams | string, fileOptions?: FileOptions): Promise<{
+    data: {
+      id: string;
+      path: string;
+      fullPath: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Moves an existing file to a new path in the same bucket.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
+   * @param toPath The new file path, including the new file name. For example `folder/image-new.png`.
+   * @param options The destination options.
+   * @param options.sourceVersionId The version id of the source object to move.
+   * @returns Promise with response containing success message or error
+   *
+   * @example Move file
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .move('public/avatar1.png', 'private/avatar2.png')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "message": "Successfully moved"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `update` and `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  move(fromPath: string, toPath: string, options?: DestinationOptions): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Copies an existing file to a new path in the same bucket.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
+   * @param toPath The new file path, including the new file name. For example `folder/image-copy.png`.
+   * @param options The destination options.
+   * @param options.sourceVersionId The version id of the source object to copy.
+   * @returns Promise with response containing copied file path or error
+   *
+   * @example Copy file
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .copy('public/avatar1.png', 'private/avatar2.png')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "path": "avatars/private/avatar2.png"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `insert` and `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  copy(fromPath: string, toPath: string, options?: DestinationOptions): Promise<{
+    data: {
+      path: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Creates a signed URL. Use a signed URL to share a file for a fixed amount of time.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The file path, including the current file name. For example `folder/image.png`.
+   * @param expiresIn The number of seconds until the signed URL expires. For example, `60` for a URL which is valid for one minute.
+   * @param options.download triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
+   * @param options.transform Transform the asset before serving it to the client.
+   * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
+   * @param options.versionId Create a signed URL for a specific object version rather than the current one.
+   * @returns Promise with response containing signed URL or error
+   *
+   * @example Create Signed URL
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .createSignedUrl('folder/avatar1.png', 60)
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar1.png?token=<TOKEN>"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @example Create a signed URL for an asset with transformations
+   * ```js
    * const { data } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .returns<Array<MyType>>()
+   *   .storage
+   *   .from('avatars')
+   *   .createSignedUrl('folder/avatar1.png', 60, {
+   *     transform: {
+   *       width: 100,
+   *       height: 100,
+   *     }
+   *   })
    * ```
    *
-   * @exampleResponse Override type of successful response
+   * @example Create a signed URL which triggers the download of the asset
    * ```js
-   * let x: typeof data // MyType[]
-   * ```
-   *
-   * @example Override type of object response
-   * ```ts
    * const { data } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .maybeSingle()
-   *   .returns<MyType>()
-   * ```
-   *
-   * @exampleResponse Override type of object response
-   * ```js
-   * let x: typeof data // MyType | null
-   * ```
-   */
-  returns<NewResult>(): PostgrestTransformBuilder<ClientOptions, Schema, Row, CheckMatchingArrayTypes<Result$1, NewResult>, RelationName, Relationships, Method, ThrowOnError>;
-  /**
-   * Set the maximum number of rows that can be affected by the query.
-   * Only available in PostgREST v13+ and only works with PATCH and DELETE methods.
-   *
-   * @param rows - The maximum number of rows that can be affected
-   *
-   * @category Database
-   * @subcategory Using modifiers
-   */
-  maxAffected(rows: number): MaxAffectedEnabled<ClientOptions['PostgrestVersion']> extends true ? Method extends 'PATCH' | 'DELETE' | 'RPC' ? this : InvalidMethodError<'maxAffected method only available on update or delete'> : InvalidMethodError<'maxAffected method only available on postgrest 13+'>;
-}
-//#endregion
-//#region src/PostgrestFilterBuilder.d.ts
-type FilterOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'is' | 'isdistinct' | 'in' | 'cs' | 'cd' | 'sl' | 'sr' | 'nxl' | 'nxr' | 'adj' | 'ov' | 'fts' | 'plfts' | 'phfts' | 'wfts' | 'match' | 'imatch';
-type IsStringOperator<Path extends string> = Path extends `${string}->>${string}` ? true : false;
-type ResolveFilterValue<Schema extends GenericSchema, Row extends Record<string, unknown>, ColumnName extends string> = ColumnName extends `${infer RelationshipTable}.${infer Remainder}` ? Remainder extends `${infer _}.${infer _}` ? ResolveFilterValue<Schema, Row, Remainder> : ResolveFilterRelationshipValue<Schema, RelationshipTable, Remainder> : ColumnName extends keyof Row ? Row[ColumnName] : IsStringOperator<ColumnName> extends true ? string : JsonPathToType<Row, JsonPathToAccessor<ColumnName>> extends infer JsonPathValue ? JsonPathValue extends never ? never : JsonPathValue : never;
-type ResolveFilterRelationshipValue<Schema extends GenericSchema, RelationshipTable$1 extends string, RelationshipColumn extends string> = Schema['Tables'] & Schema['Views'] extends infer TablesAndViews ? RelationshipTable$1 extends keyof TablesAndViews ? 'Row' extends keyof TablesAndViews[RelationshipTable$1] ? RelationshipColumn extends keyof TablesAndViews[RelationshipTable$1]['Row'] ? TablesAndViews[RelationshipTable$1]['Row'][RelationshipColumn] : unknown : unknown : unknown : never;
-type InvalidMethodError<S extends string> = {
-  Error: S;
-};
-type NonNullableColumn<T extends Record<string, unknown>, Col extends string> = Col extends keyof T ? { [K in keyof T]: K extends Col ? NonNullable<T[K]> : T[K] } : T;
-type NarrowResultColumn<T, Col extends string> = T extends (infer Item)[] ? Item extends Record<string, unknown> ? Col extends keyof Item ? { [K in keyof Item]: K extends Col ? NonNullable<Item[K]> : Item[K] }[] : T : T : T extends Record<string, unknown> ? Col extends keyof T ? { [K in keyof T]: K extends Col ? NonNullable<T[K]> : T[K] } : T : T;
-declare class PostgrestFilterBuilder<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Row extends Record<string, unknown>, Result$1, RelationName = unknown, Relationships = unknown, Method = unknown, ThrowOnError extends boolean = false> extends PostgrestTransformBuilder<ClientOptions, Schema, Row, Result$1, RelationName, Relationships, Method, ThrowOnError> {
-  throwOnError(): PostgrestFilterBuilder<ClientOptions, Schema, Row, Result$1, RelationName, Relationships, Method, true>;
-  /**
-   * Match only rows where `column` is equal to `value`.
-   *
-   * To check if the value of `column` is NULL, you should use `.is()` instead.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .eq('name', 'Leia')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 2,
-   *       "name": "Leia"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  eq<ColumnName extends string>(column: ColumnName extends keyof Row ? ColumnName : ColumnName extends `${string}.${string}` | `${string}->${string}` ? ColumnName : string extends ColumnName ? string : keyof Row, value: ResolveFilterValue<Schema, Row, ColumnName> extends never ? NonNullable<unknown> : ResolveFilterValue<Schema, Row, ColumnName> extends infer ResolvedFilterValue ? NonNullable<ResolvedFilterValue> : never): this;
-  /**
-   * Match only rows where `column` is not equal to `value`.
-   *
-   * This filter does not include rows where `column` is `NULL`. To match null
-   * values, use `.is(column, null)` instead.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .neq('name', 'Leia')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Luke"
-   *     },
-   *     {
-   *       "id": 3,
-   *       "name": "Han"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  neq<ColumnName extends string>(column: ColumnName extends keyof Row ? ColumnName : ColumnName extends `${string}.${string}` | `${string}->${string}` ? ColumnName : string extends ColumnName ? string : keyof Row, value: ResolveFilterValue<Schema, Row, ColumnName> extends never ? unknown : ResolveFilterValue<Schema, Row, ColumnName> extends infer Resolved ? Resolved : never): this;
-  /**
-   * Match only rows where `column` is greater than `value`.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription With `select()`
-   * When using [reserved words](https://www.postgresql.org/docs/current/sql-keywords-appendix.html) for column names you need
-   * to add double quotes e.g. `.gt('"order"', 2)`
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .gt('id', 2)
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 3,
-   *       "name": "Han"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  gt<ColumnName extends string & keyof Row>(column: ColumnName, value: Row[ColumnName]): this;
-  gt(column: string, value: unknown): this;
-  /**
-   * Match only rows where `column` is greater than or equal to `value`.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .gte('id', 2)
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 2,
-   *       "name": "Leia"
-   *     },
-   *     {
-   *       "id": 3,
-   *       "name": "Han"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  gte<ColumnName extends string & keyof Row>(column: ColumnName, value: Row[ColumnName]): this;
-  gte(column: string, value: unknown): this;
-  /**
-   * Match only rows where `column` is less than `value`.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .lt('id', 2)
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Luke"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  lt<ColumnName extends string & keyof Row>(column: ColumnName, value: Row[ColumnName]): this;
-  lt(column: string, value: unknown): this;
-  /**
-   * Match only rows where `column` is less than or equal to `value`.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .lte('id', 2)
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Luke"
-   *     },
-   *     {
-   *       "id": 2,
-   *       "name": "Leia"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  lte<ColumnName extends string & keyof Row>(column: ColumnName, value: Row[ColumnName]): this;
-  lte(column: string, value: unknown): this;
-  /**
-   * Match only rows where `column` matches `pattern` case-sensitively.
-   *
-   * @param column - The column to filter on
-   * @param pattern - The pattern to match with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .like('name', '%Lu%')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Luke"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  like<ColumnName extends string & keyof Row>(column: ColumnName, pattern: string): this;
-  like(column: string, pattern: string): this;
-  /**
-   * Match only rows where `column` matches all of `patterns` case-sensitively.
-   *
-   * @param column - The column to filter on
-   * @param patterns - The patterns to match with
-   *
-   * @category Database
-   * @subcategory Using filters
-   */
-  likeAllOf<ColumnName extends string & keyof Row>(column: ColumnName, patterns: readonly string[]): this;
-  likeAllOf(column: string, patterns: readonly string[]): this;
-  /**
-   * Match only rows where `column` matches any of `patterns` case-sensitively.
-   *
-   * @param column - The column to filter on
-   * @param patterns - The patterns to match with
-   *
-   * @category Database
-   * @subcategory Using filters
-   */
-  likeAnyOf<ColumnName extends string & keyof Row>(column: ColumnName, patterns: readonly string[]): this;
-  likeAnyOf(column: string, patterns: readonly string[]): this;
-  /**
-   * Match only rows where `column` matches `pattern` case-insensitively.
-   *
-   * @param column - The column to filter on
-   * @param pattern - The pattern to match with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .ilike('name', '%lu%')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Luke"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  ilike<ColumnName extends string & keyof Row>(column: ColumnName, pattern: string): this;
-  ilike(column: string, pattern: string): this;
-  /**
-   * Match only rows where `column` matches all of `patterns` case-insensitively.
-   *
-   * @param column - The column to filter on
-   * @param patterns - The patterns to match with
-   *
-   * @category Database
-   * @subcategory Using filters
-   */
-  ilikeAllOf<ColumnName extends string & keyof Row>(column: ColumnName, patterns: readonly string[]): this;
-  ilikeAllOf(column: string, patterns: readonly string[]): this;
-  /**
-   * Match only rows where `column` matches any of `patterns` case-insensitively.
-   *
-   * @param column - The column to filter on
-   * @param patterns - The patterns to match with
-   *
-   * @category Database
-   * @subcategory Using filters
-   */
-  ilikeAnyOf<ColumnName extends string & keyof Row>(column: ColumnName, patterns: readonly string[]): this;
-  ilikeAnyOf(column: string, patterns: readonly string[]): this;
-  /**
-   * Match only rows where `column` matches the PostgreSQL regex `pattern`
-   * case-sensitively (using the `~` operator).
-   *
-   * @param column - The column to filter on
-   * @param pattern - The PostgreSQL regular expression pattern to match with
-   */
-  regexMatch<ColumnName extends string & keyof Row>(column: ColumnName, pattern: string): this;
-  regexMatch(column: string, pattern: string): this;
-  /**
-   * Match only rows where `column` matches the PostgreSQL regex `pattern`
-   * case-insensitively (using the `~*` operator).
-   *
-   * @param column - The column to filter on
-   * @param pattern - The PostgreSQL regular expression pattern to match with
-   */
-  regexIMatch<ColumnName extends string & keyof Row>(column: ColumnName, pattern: string): this;
-  regexIMatch(column: string, pattern: string): this;
-  /**
-   * Match only rows where `column` IS `value`.
-   *
-   * For non-boolean columns, this is only relevant for checking if the value of
-   * `column` is NULL by setting `value` to `null`.
-   *
-   * For boolean columns, you can also set `value` to `true` or `false` and it
-   * will behave the same way as `.eq()`.
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription Checking for nullness, true or false
-   * Using the `eq()` filter doesn't work when filtering for `null`.
-   *
-   * Instead, you need to use `is()`.
-   *
-   * @example Checking for nullness, true or false
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('countries')
-   *   .select()
-   *   .is('name', null)
-   * ```
-   *
-   * @exampleSql Checking for nullness, true or false
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   *
-   * insert into
-   *   countries (id, name)
-   * values
-   *   (1, 'null'),
-   *   (2, null);
-   * ```
-   *
-   * @exampleResponse Checking for nullness, true or false
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 2,
-   *       "name": "null"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  is<ColumnName extends string & keyof Row>(column: ColumnName, value: Row[ColumnName] & (boolean | null)): this;
-  is(column: string, value: boolean | null): this;
-  /**
-   * Match only rows where `column` IS DISTINCT FROM `value`.
-   *
-   * Unlike `.neq()`, this treats `NULL` as a comparable value. Two `NULL` values
-   * are considered equal (not distinct), and comparing `NULL` with any non-NULL
-   * value returns true (distinct).
-   *
-   * @param column - The column to filter on
-   * @param value - The value to filter with
-   */
-  isDistinct<ColumnName extends string>(column: ColumnName, value: ResolveFilterValue<Schema, Row, ColumnName> extends never ? unknown : ResolveFilterValue<Schema, Row, ColumnName> extends infer ResolvedFilterValue ? ResolvedFilterValue : never): this;
-  /**
-   * Match only rows where `column` is included in the `values` array.
-   *
-   * @param column - The column to filter on
-   * @param values - The values array to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .in('name', ['Leia', 'Han'])
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 2,
-   *       "name": "Leia"
-   *     },
-   *     {
-   *       "id": 3,
-   *       "name": "Han"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  in<ColumnName extends string>(column: ColumnName, values: ReadonlyArray<ResolveFilterValue<Schema, Row, ColumnName> extends never ? unknown : ResolveFilterValue<Schema, Row, ColumnName> extends infer ResolvedFilterValue ? ResolvedFilterValue : never>): this;
-  /**
-   * Match only rows where `column` is NOT included in the `values` array.
-   *
-   * @param column - The column to filter on
-   * @param values - The values array to filter with
-   */
-  notIn<ColumnName extends string>(column: ColumnName, values: ReadonlyArray<ResolveFilterValue<Schema, Row, ColumnName> extends never ? unknown : ResolveFilterValue<Schema, Row, ColumnName> extends infer ResolvedFilterValue ? ResolvedFilterValue : never>): this;
-  /**
-   * Only relevant for jsonb, array, and range columns. Match only rows where
-   * `column` contains every element appearing in `value`.
-   *
-   * @param column - The jsonb, array, or range column to filter on
-   * @param value - The jsonb, array, or range value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example On array columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('issues')
-   *   .select()
-   *   .contains('tags', ['is:open', 'priority:low'])
-   * ```
-   *
-   * @exampleSql On array columns
-   * ```sql
-   * create table
-   *   issues (
-   *     id int8 primary key,
-   *     title text,
-   *     tags text[]
-   *   );
-   *
-   * insert into
-   *   issues (id, title, tags)
-   * values
-   *   (1, 'Cache invalidation is not working', array['is:open', 'severity:high', 'priority:low']),
-   *   (2, 'Use better names', array['is:open', 'severity:low', 'priority:medium']);
-   * ```
-   *
-   * @exampleResponse On array columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "title": "Cache invalidation is not working"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @exampleDescription On range columns
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example On range columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .contains('during', '[2000-01-01 13:00, 2000-01-01 13:30)')
-   * ```
-   *
-   * @exampleSql On range columns
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse On range columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "room_name": "Emerald",
-   *       "during": "[\"2000-01-01 13:00:00\",\"2000-01-01 15:00:00\")"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example On `jsonb` columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('users')
-   *   .select('name')
-   *   .contains('address', { postcode: 90210 })
-   * ```
-   *
-   * @exampleSql On `jsonb` columns
-   * ```sql
-   * create table
-   *   users (
-   *     id int8 primary key,
-   *     name text,
-   *     address jsonb
-   *   );
-   *
-   * insert into
-   *   users (id, name, address)
-   * values
-   *   (1, 'Michael', '{ "postcode": 90210, "street": "Melrose Place" }'),
-   *   (2, 'Jane', '{}');
-   * ```
-   *
-   * @exampleResponse On `jsonb` columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Michael"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  contains<ColumnName extends string & keyof Row>(column: ColumnName, value: string | ReadonlyArray<Row[ColumnName]> | Record<string, unknown>): this;
-  contains(column: string, value: string | readonly unknown[] | Record<string, unknown>): this;
-  /**
-   * Only relevant for jsonb, array, and range columns. Match only rows where
-   * every element appearing in `column` is contained by `value`.
-   *
-   * @param column - The jsonb, array, or range column to filter on
-   * @param value - The jsonb, array, or range value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example On array columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('classes')
-   *   .select('name')
-   *   .containedBy('days', ['monday', 'tuesday', 'wednesday', 'friday'])
-   * ```
-   *
-   * @exampleSql On array columns
-   * ```sql
-   * create table
-   *   classes (
-   *     id int8 primary key,
-   *     name text,
-   *     days text[]
-   *   );
-   *
-   * insert into
-   *   classes (id, name, days)
-   * values
-   *   (1, 'Chemistry', array['monday', 'friday']),
-   *   (2, 'History', array['monday', 'wednesday', 'thursday']);
-   * ```
-   *
-   * @exampleResponse On array columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Chemistry"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @exampleDescription On range columns
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example On range columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .containedBy('during', '[2000-01-01 00:00, 2000-01-01 23:59)')
-   * ```
-   *
-   * @exampleSql On range columns
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse On range columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "room_name": "Emerald",
-   *       "during": "[\"2000-01-01 13:00:00\",\"2000-01-01 15:00:00\")"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example On `jsonb` columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('users')
-   *   .select('name')
-   *   .containedBy('address', {})
-   * ```
-   *
-   * @exampleSql On `jsonb` columns
-   * ```sql
-   * create table
-   *   users (
-   *     id int8 primary key,
-   *     name text,
-   *     address jsonb
-   *   );
-   *
-   * insert into
-   *   users (id, name, address)
-   * values
-   *   (1, 'Michael', '{ "postcode": 90210, "street": "Melrose Place" }'),
-   *   (2, 'Jane', '{}');
-   * ```
-   *
-   * @exampleResponse On `jsonb` columns
-   * ```json
-   *   {
-   *     "data": [
-   *       {
-   *         "name": "Jane"
-   *       }
-   *     ],
-   *     "status": 200,
-   *     "statusText": "OK"
-   *   }
-   *
-   * ```
-   */
-  containedBy<ColumnName extends string & keyof Row>(column: ColumnName, value: string | ReadonlyArray<Row[ColumnName]> | Record<string, unknown>): this;
-  containedBy(column: string, value: string | readonly unknown[] | Record<string, unknown>): this;
-  /**
-   * Only relevant for range columns. Match only rows where every element in
-   * `column` is greater than any element in `range`.
-   *
-   * @param column - The range column to filter on
-   * @param range - The range to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription With `select()`
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .rangeGt('during', '[2000-01-02 08:00, 2000-01-02 09:00)')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   *   {
-   *     "data": [
-   *       {
-   *         "id": 2,
-   *         "room_name": "Topaz",
-   *         "during": "[\"2000-01-02 09:00:00\",\"2000-01-02 10:00:00\")"
-   *       }
-   *     ],
-   *     "status": 200,
-   *     "statusText": "OK"
-   *   }
-   *
-   * ```
-   */
-  rangeGt<ColumnName extends string & keyof Row>(column: ColumnName, range: string): this;
-  rangeGt(column: string, range: string): this;
-  /**
-   * Only relevant for range columns. Match only rows where every element in
-   * `column` is either contained in `range` or greater than any element in
-   * `range`.
-   *
-   * @param column - The range column to filter on
-   * @param range - The range to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription With `select()`
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .rangeGte('during', '[2000-01-02 08:30, 2000-01-02 09:30)')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   *   {
-   *     "data": [
-   *       {
-   *         "id": 2,
-   *         "room_name": "Topaz",
-   *         "during": "[\"2000-01-02 09:00:00\",\"2000-01-02 10:00:00\")"
-   *       }
-   *     ],
-   *     "status": 200,
-   *     "statusText": "OK"
-   *   }
-   *
-   * ```
-   */
-  rangeGte<ColumnName extends string & keyof Row>(column: ColumnName, range: string): this;
-  rangeGte(column: string, range: string): this;
-  /**
-   * Only relevant for range columns. Match only rows where every element in
-   * `column` is less than any element in `range`.
-   *
-   * @param column - The range column to filter on
-   * @param range - The range to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription With `select()`
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .rangeLt('during', '[2000-01-01 15:00, 2000-01-01 16:00)')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "room_name": "Emerald",
-   *       "during": "[\"2000-01-01 13:00:00\",\"2000-01-01 15:00:00\")"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  rangeLt<ColumnName extends string & keyof Row>(column: ColumnName, range: string): this;
-  rangeLt(column: string, range: string): this;
-  /**
-   * Only relevant for range columns. Match only rows where every element in
-   * `column` is either contained in `range` or less than any element in
-   * `range`.
-   *
-   * @param column - The range column to filter on
-   * @param range - The range to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription With `select()`
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .rangeLte('during', '[2000-01-01 14:00, 2000-01-01 16:00)')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   *   {
-   *     "data": [
-   *       {
-   *         "id": 1,
-   *         "room_name": "Emerald",
-   *         "during": "[\"2000-01-01 13:00:00\",\"2000-01-01 15:00:00\")"
-   *       }
-   *     ],
-   *     "status": 200,
-   *     "statusText": "OK"
-   *   }
-   *
-   * ```
-   */
-  rangeLte<ColumnName extends string & keyof Row>(column: ColumnName, range: string): this;
-  rangeLte(column: string, range: string): this;
-  /**
-   * Only relevant for range columns. Match only rows where `column` is
-   * mutually exclusive to `range` and there can be no element between the two
-   * ranges.
-   *
-   * @param column - The range column to filter on
-   * @param range - The range to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @exampleDescription With `select()`
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .rangeAdjacent('during', '[2000-01-01 12:00, 2000-01-01 13:00)')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "room_name": "Emerald",
-   *       "during": "[\"2000-01-01 13:00:00\",\"2000-01-01 15:00:00\")"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  rangeAdjacent<ColumnName extends string & keyof Row>(column: ColumnName, range: string): this;
-  rangeAdjacent(column: string, range: string): this;
-  /**
-   * Only relevant for array and range columns. Match only rows where
-   * `column` and `value` have an element in common.
-   *
-   * @param column - The array or range column to filter on
-   * @param value - The array or range value to filter with
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example On array columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('issues')
-   *   .select('title')
-   *   .overlaps('tags', ['is:closed', 'severity:high'])
-   * ```
-   *
-   * @exampleSql On array columns
-   * ```sql
-   * create table
-   *   issues (
-   *     id int8 primary key,
-   *     title text,
-   *     tags text[]
-   *   );
-   *
-   * insert into
-   *   issues (id, title, tags)
-   * values
-   *   (1, 'Cache invalidation is not working', array['is:open', 'severity:high', 'priority:low']),
-   *   (2, 'Use better names', array['is:open', 'severity:low', 'priority:medium']);
-   * ```
-   *
-   * @exampleResponse On array columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "title": "Cache invalidation is not working"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @exampleDescription On range columns
-   * Postgres supports a number of [range
-   * types](https://www.postgresql.org/docs/current/rangetypes.html). You
-   * can filter on range columns using the string representation of range
-   * values.
-   *
-   * @example On range columns
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('reservations')
-   *   .select()
-   *   .overlaps('during', '[2000-01-01 12:45, 2000-01-01 13:15)')
-   * ```
-   *
-   * @exampleSql On range columns
-   * ```sql
-   * create table
-   *   reservations (
-   *     id int8 primary key,
-   *     room_name text,
-   *     during tsrange
-   *   );
-   *
-   * insert into
-   *   reservations (id, room_name, during)
-   * values
-   *   (1, 'Emerald', '[2000-01-01 13:00, 2000-01-01 15:00)'),
-   *   (2, 'Topaz', '[2000-01-02 09:00, 2000-01-02 10:00)');
-   * ```
-   *
-   * @exampleResponse On range columns
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "room_name": "Emerald",
-   *       "during": "[\"2000-01-01 13:00:00\",\"2000-01-01 15:00:00\")"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  overlaps<ColumnName extends string & keyof Row>(column: ColumnName, value: string | ReadonlyArray<Row[ColumnName]>): this;
-  overlaps(column: string, value: string | readonly unknown[]): this;
-  /**
-   * Only relevant for text and tsvector columns. Match only rows where
-   * `column` matches the query string in `query`.
-   *
-   * @param column - The text or tsvector column to filter on
-   * @param query - The query text to match with
-   * @param options - Named parameters
-   * @param options.config - The text search configuration to use
-   * @param options.type - Change how the `query` text is interpreted
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @remarks
-   * - For more information, see [Postgres full text search](/docs/guides/database/full-text-search).
-   *
-   * @example Text search
-   * ```ts
-   * const result = await supabase
-   *   .from("texts")
-   *   .select("content")
-   *   .textSearch("content", `'eggs' & 'ham'`, {
-   *     config: "english",
-   *   });
-   * ```
-   *
-   * @exampleSql Text search
-   * ```sql
-   * create table texts (
-   *   id      bigint
-   *           primary key
-   *           generated always as identity,
-   *   content text
-   * );
-   *
-   * insert into texts (content) values
-   *     ('Four score and seven years ago'),
-   *     ('The road goes ever on and on'),
-   *     ('Green eggs and ham')
-   * ;
-   * ```
-   *
-   * @exampleResponse Text search
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "content": "Green eggs and ham"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @exampleDescription Basic normalization
-   * Uses PostgreSQL's `plainto_tsquery` function.
-   *
-   * @example Basic normalization
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('quotes')
-   *   .select('catchphrase')
-   *   .textSearch('catchphrase', `'fat' & 'cat'`, {
-   *     type: 'plain',
-   *     config: 'english'
+   *   .storage
+   *   .from('avatars')
+   *   .createSignedUrl('folder/avatar1.png', 60, {
+   *     download: true,
    *   })
    * ```
    *
-   * @exampleDescription Full normalization
-   * Uses PostgreSQL's `phraseto_tsquery` function.
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  createSignedUrl(path: string, expiresIn: number, options?: {
+    download?: string | boolean;
+    transform?: TransformOptions;
+    cacheNonce?: string;
+    versionId?: string;
+  }): Promise<{
+    data: {
+      signedUrl: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Creates multiple signed URLs. Use a signed URL to share a file for a fixed amount of time.
    *
-   * @example Full normalization
-   * ```ts
+   * @category Storage
+   * @subcategory File Buckets
+   * @param paths The file paths to be downloaded, including the current file names. For example `['folder/image.png', 'folder2/image2.png']`.
+   * @param expiresIn The number of seconds until the signed URLs expire. For example, `60` for URLs which are valid for one minute.
+   * @param options.download triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
+   * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
+   * @returns Promise with response containing array of objects with signedUrl, path, and error or error
+   *
+   * @example Create Signed URLs
+   * ```js
    * const { data, error } = await supabase
-   *   .from('quotes')
-   *   .select('catchphrase')
-   *   .textSearch('catchphrase', `'fat' & 'cat'`, {
-   *     type: 'phrase',
-   *     config: 'english'
+   *   .storage
+   *   .from('avatars')
+   *   .createSignedUrls(['folder/avatar1.png', 'folder/avatar2.png'], 60)
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": [
+   *     {
+   *       "error": null,
+   *       "path": "folder/avatar1.png",
+   *       "signedURL": "/object/sign/avatars/folder/avatar1.png?token=<TOKEN>",
+   *       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar1.png?token=<TOKEN>"
+   *     },
+   *     {
+   *       "error": null,
+   *       "path": "folder/avatar2.png",
+   *       "signedURL": "/object/sign/avatars/folder/avatar2.png?token=<TOKEN>",
+   *       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar2.png?token=<TOKEN>"
+   *     }
+   *   ],
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  createSignedUrls(paths: string[], expiresIn: number, options?: {
+    download?: string | boolean;
+    cacheNonce?: string;
+  }): Promise<{
+    data: {
+      error: string | null;
+      path: string | null;
+      signedURL: string | null;
+      signedUrl: string | null;
+    }[];
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Downloads a file from a private bucket. For public buckets, make a request to the URL returned from `getPublicUrl` instead.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The full path and file name of the file to be downloaded. For example `folder/image.png`.
+   * @param options Optional settings: `transform` to transform the asset before serving it to the client, `cacheNonce` to append a cache nonce parameter to the URL to invalidate the cache, and `versionId` to download a specific object version.
+   * @param parameters Additional fetch parameters like signal for cancellation. Supports standard fetch options including cache control.
+   * @returns BlobDownloadBuilder instance for downloading the file
+   *
+   * @example Download file
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .download('folder/avatar1.png')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": <BLOB>,
+   *   "error": null
+   * }
+   * ```
+   *
+   * @example Download file with transformations
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .download('folder/avatar1.png', {
+   *     transform: {
+   *       width: 100,
+   *       height: 100,
+   *       quality: 80
+   *     }
    *   })
    * ```
    *
-   * @exampleDescription Websearch
-   * Uses PostgreSQL's `websearch_to_tsquery` function.
-   * This function will never raise syntax errors, which makes it possible to use raw user-supplied input for search, and can be used
-   * with advanced operators.
-   *
-   * - `unquoted text`: text not inside quote marks will be converted to terms separated by & operators, as if processed by plainto_tsquery.
-   * - `"quoted text"`: text inside quote marks will be converted to terms separated by `<->` operators, as if processed by phraseto_tsquery.
-   * - `OR`: the word “or” will be converted to the | operator.
-   * - `-`: a dash will be converted to the ! operator.
-   *
-   * @example Websearch
-   * ```ts
+   * @example Download with cache control (useful in Edge Functions)
+   * ```js
    * const { data, error } = await supabase
-   *   .from('quotes')
-   *   .select('catchphrase')
-   *   .textSearch('catchphrase', `'fat or cat'`, {
-   *     type: 'websearch',
-   *     config: 'english'
+   *   .storage
+   *   .from('avatars')
+   *   .download('folder/avatar1.png', {}, { cache: 'no-store' })
+   * ```
+   *
+   * @example Download with abort signal
+   * ```js
+   * const controller = new AbortController()
+   * setTimeout(() => controller.abort(), 5000)
+   *
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .download('folder/avatar1.png', {}, { signal: controller.signal })
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  download<Options extends {
+    transform?: TransformOptions;
+    cacheNonce?: string;
+    versionId?: string;
+  }>(path: string, options?: Options, parameters?: FetchParameters): BlobDownloadBuilder;
+  /**
+   * Retrieves the details of an existing file.
+   *
+   * Returns detailed file metadata including size, content type, and timestamps.
+   * Note: The API returns `last_modified` field, not `updated_at`.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The file path, including the file name. For example `folder/image.png`.
+   * @param options Optional settings, including `versionId` to retrieve a specific object version.
+   * @returns Promise with response containing file metadata or error
+   *
+   * @example Get file info
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .info('folder/avatar1.png')
+   *
+   * if (data) {
+   *   console.log('Last modified:', data.lastModified)
+   *   console.log('Size:', data.size)
+   * }
+   * ```
+   */
+  info(path: string, options?: {
+    versionId?: string;
+  }): Promise<{
+    data: Camelize<FileObjectV2>;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Checks the existence of a file.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The file path, including the file name. For example `folder/image.png`.
+   * @returns Promise with response containing boolean indicating file existence or error
+   *
+   * @example Check file existence
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .exists('folder/avatar1.png')
+   * ```
+   */
+  exists(path: string): Promise<{
+    data: boolean;
+    error: null;
+  } | {
+    data: boolean;
+    error: StorageError;
+  }>;
+  /**
+   * A simple convenience function to get the URL for an asset in a public bucket. If you do not want to use this function, you can construct the public URL by concatenating the bucket URL with the path to the asset.
+   * This function does not verify if the bucket is public. If a public URL is created for a bucket which is not public, you will not be able to download the asset.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The path and name of the file to generate the public URL for. For example `folder/image.png`.
+   * @param options.download Triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
+   * @param options.transform Transform the asset before serving it to the client.
+   * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
+   * @param options.versionId Return the URL for a specific object version rather than the current one.
+   * @returns Object with public URL
+   *
+   * @example Returns the URL for an asset in a public bucket
+   * ```js
+   * const { data } = supabase
+   *   .storage
+   *   .from('public-bucket')
+   *   .getPublicUrl('folder/avatar1.png')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "publicUrl": "https://example.supabase.co/storage/v1/object/public/public-bucket/folder/avatar1.png"
+   *   }
+   * }
+   * ```
+   *
+   * @example Returns the URL for an asset in a public bucket with transformations
+   * ```js
+   * const { data } = supabase
+   *   .storage
+   *   .from('public-bucket')
+   *   .getPublicUrl('folder/avatar1.png', {
+   *     transform: {
+   *       width: 100,
+   *       height: 100,
+   *     }
    *   })
    * ```
-   */
-  textSearch<ColumnName extends string & keyof Row>(column: ColumnName, query: string, options?: {
-    config?: string;
-    type?: 'plain' | 'phrase' | 'websearch';
-  }): this;
-  textSearch(column: string, query: string, options?: {
-    config?: string;
-    type?: 'plain' | 'phrase' | 'websearch';
-  }): this;
-  /**
-   * Match only rows where each column in `query` keys is equal to its
-   * associated value. Shorthand for multiple `.eq()`s.
    *
-   * @param query - The object to filter with, with column names as keys mapped
-   * to their filter values
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select('name')
-   *   .match({ id: 2, name: 'Leia' })
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Leia"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  match<ColumnName extends string & keyof Row>(query: Record<ColumnName, Row[ColumnName]>): this;
-  match(query: Record<string, unknown>): this;
-  /**
-   * Match only rows which doesn't satisfy the filter.
-   *
-   * Unlike most filters, `opearator` and `value` are used as-is and need to
-   * follow [PostgREST
-   * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
-   * to make sure they are properly sanitized.
-   *
-   * @param column - The column to filter on
-   * @param operator - The operator to be negated to filter with, following
-   * PostgREST syntax
-   * @param value - The value to filter with, following PostgREST syntax
-   *
-   * @category Database
-   * @subcategory Using filters
-   */
-  not<ColumnName extends string & keyof Row>(column: ColumnName, operator: 'is', value: null): PostgrestFilterBuilder<ClientOptions, Schema, NonNullableColumn<Row, ColumnName>, NarrowResultColumn<Result$1, ColumnName>, RelationName, Relationships, Method, ThrowOnError> & this;
-  not<ColumnName extends string & keyof Row>(column: ColumnName, operator: FilterOperator, value: Row[ColumnName]): this;
-  not(column: string, operator: string, value: unknown): this;
-  /**
-   * Match only rows which satisfy at least one of the filters.
-   *
-   * Unlike most filters, `filters` is used as-is and needs to follow [PostgREST
-   * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
-   * to make sure it's properly sanitized.
-   *
-   * It's currently not possible to do an `.or()` filter across multiple tables.
-   *
-   * @param filters - The filters to use, following PostgREST syntax
-   * @param options - Named parameters
-   * @param options.referencedTable - Set this to filter on referenced tables
-   * instead of the parent table
-   * @param options.foreignTable - Deprecated, use `referencedTable` instead
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @remarks
-   * or() expects you to use the raw PostgREST syntax for the filter names and values.
-   *
-   * ```ts
-   * .or('id.in.(5,6,7), arraycol.cs.{"a","b"}')  // Use `()` for `in` filter, `{}` for array values and `cs` for `contains()`.
-   * .or('id.in.(5,6,7), arraycol.cd.{"a","b"}')  // Use `cd` for `containedBy()`
-   * ```
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select('name')
-   *   .or('id.eq.2,name.eq.Han')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Leia"
-   *     },
-   *     {
-   *       "name": "Han"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example Use `or` with `and`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select('name')
-   *   .or('id.gt.3,and(id.eq.1,name.eq.Luke)')
-   * ```
-   *
-   * @exampleSql Use `or` with `and`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse Use `or` with `and`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "Luke"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example Use `or` on referenced tables
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('orchestral_sections')
-   *   .select(`
-   *     name,
-   *     instruments!inner (
-   *       name
-   *     )
-   *   `)
-   *   .or('section_id.eq.1,name.eq.guzheng', { referencedTable: 'instruments' })
-   * ```
-   *
-   * @exampleSql Use `or` on referenced tables
-   * ```sql
-   * create table
-   *   orchestral_sections (id int8 primary key, name text);
-   * create table
-   *   instruments (
-   *     id int8 primary key,
-   *     section_id int8 not null references orchestral_sections,
-   *     name text
-   *   );
-   *
-   * insert into
-   *   orchestral_sections (id, name)
-   * values
-   *   (1, 'strings'),
-   *   (2, 'woodwinds');
-   * insert into
-   *   instruments (id, section_id, name)
-   * values
-   *   (1, 2, 'flute'),
-   *   (2, 1, 'violin');
-   * ```
-   *
-   * @exampleResponse Use `or` on referenced tables
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "strings",
-   *       "instruments": [
-   *         {
-   *           "name": "violin"
-   *         }
-   *       ]
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  or(filters: string, {
-    foreignTable,
-    referencedTable
-  }?: {
-    foreignTable?: string;
-    referencedTable?: string;
-  }): this;
-  /**
-   * Match only rows which satisfy the filter. This is an escape hatch - you
-   * should use the specific filter methods wherever possible.
-   *
-   * Unlike most filters, `opearator` and `value` are used as-is and need to
-   * follow [PostgREST
-   * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
-   * to make sure they are properly sanitized.
-   *
-   * @param column - The column to filter on
-   * @param operator - The operator to filter with, following PostgREST syntax
-   * @param value - The value to filter with, following PostgREST syntax
-   *
-   * @category Database
-   * @subcategory Using filters
-   *
-   * @remarks
-   * filter() expects you to use the raw PostgREST syntax for the filter values.
-   *
-   * ```ts
-   * .filter('id', 'in', '(5,6,7)')  // Use `()` for `in` filter
-   * .filter('arraycol', 'cs', '{"a","b"}')  // Use `cs` for `contains()`, `{}` for array values
-   * ```
-   *
-   * @example With `select()`
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('characters')
-   *   .select()
-   *   .filter('name', 'in', '("Han","Yoda")')
-   * ```
-   *
-   * @exampleSql With `select()`
-   * ```sql
-   * create table
-   *   characters (id int8 primary key, name text);
-   *
-   * insert into
-   *   characters (id, name)
-   * values
-   *   (1, 'Luke'),
-   *   (2, 'Leia'),
-   *   (3, 'Han');
-   * ```
-   *
-   * @exampleResponse With `select()`
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 3,
-   *       "name": "Han"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example On a referenced table
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('orchestral_sections')
-   *   .select(`
-   *     name,
-   *     instruments!inner (
-   *       name
-   *     )
-   *   `)
-   *   .filter('instruments.name', 'eq', 'flute')
-   * ```
-   *
-   * @exampleSql On a referenced table
-   * ```sql
-   * create table
-   *   orchestral_sections (id int8 primary key, name text);
-   * create table
-   *    instruments (
-   *     id int8 primary key,
-   *     section_id int8 not null references orchestral_sections,
-   *     name text
-   *   );
-   *
-   * insert into
-   *   orchestral_sections (id, name)
-   * values
-   *   (1, 'strings'),
-   *   (2, 'woodwinds');
-   * insert into
-   *   instruments (id, section_id, name)
-   * values
-   *   (1, 2, 'flute'),
-   *   (2, 1, 'violin');
-   * ```
-   *
-   * @exampleResponse On a referenced table
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "name": "woodwinds",
-   *       "instruments": [
-   *         {
-   *           "name": "flute"
-   *         }
-   *       ]
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  filter<ColumnName extends string & keyof Row>(column: ColumnName, operator: `${'' | 'not.'}${FilterOperator}`, value: unknown): this;
-  filter(column: string, operator: string, value: unknown): this;
-}
-//#endregion
-//#region src/PostgrestQueryBuilder.d.ts
-declare class PostgrestQueryBuilder<ClientOptions extends ClientServerOptions, Schema extends GenericSchema, Relation$1 extends GenericTable | GenericView, RelationName = unknown, Relationships = (Relation$1 extends {
-  Relationships: infer R;
-} ? R : unknown)> {
-  url: URL;
-  headers: Headers;
-  schema?: string;
-  signal?: AbortSignal;
-  fetch?: Fetch;
-  urlLengthLimit: number;
-  /**
-   * Enable or disable automatic retries for transient errors.
-   * When enabled, idempotent requests (GET/HEAD/OPTIONS) that fail with network
-   * errors or HTTP 503/520 responses are automatically retried with exponential
-   * backoff (1s, 2s, 4s, up to 3 attempts). Defaults to `true` when not specified.
-   */
-  retry?: boolean;
-  /**
-   * Creates a query builder scoped to a Postgres table or view.
-   *
-   * @category Database
-   *
-   * @param url - The URL for the query
-   * @param options - Named parameters
-   * @param options.headers - Custom headers
-   * @param options.schema - Postgres schema to use
-   * @param options.fetch - Custom fetch implementation
-   * @param options.urlLengthLimit - Maximum URL length before warning
-   * @param options.retry - Enable automatic retries for transient errors (default: true)
-   *
-   * @example Using supabase-js (recommended)
-   * ```ts
-   * import { createClient } from '@supabase/supabase-js'
-   *
-   * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-   * const { data, error } = await supabase.from('users').select('*')
-   * ```
-   *
-   * @example Standalone import for bundle-sensitive environments
-   * ```ts
-   * import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
-   *
-   * const query = new PostgrestQueryBuilder(
-   *   new URL('https://xyzcompany.supabase.co/rest/v1/users'),
-   *   { headers: { apikey: 'your-publishable-key' }, retry: true }
-   * )
-   * ```
-   */
-  constructor(url: URL, {
-    headers,
-    schema,
-    fetch,
-    urlLengthLimit,
-    retry
-  }: {
-    headers?: HeadersInit;
-    schema?: string;
-    fetch?: Fetch;
-    urlLengthLimit?: number;
-    retry?: boolean;
-  });
-  /**
-   * Clone URL and headers to prevent shared state between operations.
-   */
-  private cloneRequestState;
-  /**
-       * Perform a SELECT query on the table or view.
-       *
-       * @param columns - The columns to retrieve, separated by commas. Columns can be renamed when returned with `customName:columnName`
-       *
-       * @param options - Named parameters
-       *
-       * @param options.head - When set to `true`, `data` will not be returned.
-       * Useful if you only need the count.
-       *
-       * @param options.count - Count algorithm to use to count rows in the table or view.
-       *
-       * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-       * hood.
-       *
-       * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-       * statistics under the hood.
-       *
-       * `"estimated"`: Uses exact count for low numbers and planned count for high
-       * numbers.
-       *
-       * @remarks
-       * When using `count` with `.range()` or `.limit()`, the returned `count` is the total number of rows
-       * that match your filters, not the number of rows in the current page. Use this to build pagination UI.
-       
-     * - By default, Supabase projects return a maximum of 1,000 rows. This setting can be changed in your project's [API settings](/dashboard/project/_/settings/api). It's recommended that you keep it low to limit the payload size of accidental or malicious requests. You can use `range()` queries to paginate through your data.
-     * - `select()` can be combined with [Filters](/docs/reference/javascript/using-filters)
-     * - `select()` can be combined with [Modifiers](/docs/reference/javascript/using-modifiers)
-     * - `apikey` is a reserved keyword if you're using the [Supabase Platform](/docs/guides/platform) and [should be avoided as a column name](https://github.com/supabase/supabase/issues/5465). *
-     * @category Database
-     *
-     * @example Getting your data
-     * ```js
-     * const { data, error } = await supabase
-     *   .from('characters')
-     *   .select()
-     * ```
-     *
-     * @exampleSql Getting your data
-     * ```sql
-     * create table
-     *   characters (id int8 primary key, name text);
-     *
-     * insert into
-     *   characters (id, name)
-     * values
-     *   (1, 'Harry'),
-     *   (2, 'Frodo'),
-     *   (3, 'Katniss');
-     * ```
-     *
-     * @exampleResponse Getting your data
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "id": 1,
-     *       "name": "Harry"
-     *     },
-     *     {
-     *       "id": 2,
-     *       "name": "Frodo"
-     *     },
-     *     {
-     *       "id": 3,
-     *       "name": "Katniss"
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Handling errors
-     * The most useful field on a Postgres error is usually `hint` — when the database knows the fix, it puts the literal SQL there. For example, a permission-denied error (`code: '42501'`) arrives with a `hint` like `"Grant the required privileges to the current role with: GRANT SELECT ON public.characters TO anon;"`. Log the full `error` object so the hint isn't hidden behind `error.message`.
-     *
-     * @example Handling errors
-     * ```js
-     * const { data, error } = await supabase.from('characters').select()
-     * if (error) {
-     *   // Logs the full error: message, code, details, and hint.
-     *   console.error(error)
-     *   return
-     * }
-     * ```
-     *
-     * @exampleResponse Handling errors
-     * ```json
-     * {
-     *   "error": {
-     *     "code": "42501",
-     *     "details": null,
-     *     "hint": "Grant the required privileges to the current role with: GRANT SELECT ON public.characters TO anon;",
-     *     "message": "permission denied for table characters"
-     *   },
-     *   "status": 401,
-     *   "statusText": ""
-     * }
-     * ```
-     *
-     * @example Selecting specific columns
-     * ```js
-     * const { data, error } = await supabase
-     *   .from('characters')
-     *   .select('name')
-     * ```
-     *
-     * @exampleSql Selecting specific columns
-     * ```sql
-     * create table
-     *   characters (id int8 primary key, name text);
-     *
-     * insert into
-     *   characters (id, name)
-     * values
-     *   (1, 'Frodo'),
-     *   (2, 'Harry'),
-     *   (3, 'Katniss');
-     * ```
-     *
-     * @exampleResponse Selecting specific columns
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "name": "Frodo"
-     *     },
-     *     {
-     *       "name": "Harry"
-     *     },
-     *     {
-     *       "name": "Katniss"
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Query referenced tables
-     * If your database has foreign key relationships, you can query related tables too.
-     *
-     * @example Query referenced tables
-     * ```js
-     * const { data, error } = await supabase
-     *   .from('orchestral_sections')
-     *   .select(`
-     *     name,
-     *     instruments (
-     *       name
-     *     )
-     *   `)
-     * ```
-     *
-     * @exampleSql Query referenced tables
-     * ```sql
-     * create table
-     *   orchestral_sections (id int8 primary key, name text);
-     * create table
-     *   instruments (
-     *     id int8 primary key,
-     *     section_id int8 not null references orchestral_sections,
-     *     name text
-     *   );
-     *
-     * insert into
-     *   orchestral_sections (id, name)
-     * values
-     *   (1, 'strings'),
-     *   (2, 'woodwinds');
-     * insert into
-     *   instruments (id, section_id, name)
-     * values
-     *   (1, 2, 'flute'),
-     *   (2, 1, 'violin');
-     * ```
-     *
-     * @exampleResponse Query referenced tables
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "name": "strings",
-     *       "instruments": [
-     *         {
-     *           "name": "violin"
-     *         }
-     *       ]
-     *     },
-     *     {
-     *       "name": "woodwinds",
-     *       "instruments": [
-     *         {
-     *           "name": "flute"
-     *         }
-     *       ]
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Query referenced tables with spaces in their names
-     * If your table name contains spaces, you must use double quotes in the `select` statement to reference the table.
-     *
-     * @example Query referenced tables with spaces in their names
-     * ```js
-     * const { data, error } = await supabase
-     *   .from('orchestral sections')
-     *   .select(`
-     *     name,
-     *     "musical instruments" (
-     *       name
-     *     )
-     *   `)
-     * ```
-     *
-     * @exampleSql Query referenced tables with spaces in their names
-     * ```sql
-     * create table
-     *   "orchestral sections" (id int8 primary key, name text);
-     * create table
-     *   "musical instruments" (
-     *     id int8 primary key,
-     *     section_id int8 not null references "orchestral sections",
-     *     name text
-     *   );
-     *
-     * insert into
-     *   "orchestral sections" (id, name)
-     * values
-     *   (1, 'strings'),
-     *   (2, 'woodwinds');
-     * insert into
-     *   "musical instruments" (id, section_id, name)
-     * values
-     *   (1, 2, 'flute'),
-     *   (2, 1, 'violin');
-     * ```
-     *
-     * @exampleResponse Query referenced tables with spaces in their names
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "name": "strings",
-     *       "musical instruments": [
-     *         {
-     *           "name": "violin"
-     *         }
-     *       ]
-     *     },
-     *     {
-     *       "name": "woodwinds",
-     *       "musical instruments": [
-     *         {
-     *           "name": "flute"
-     *         }
-     *       ]
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Query referenced tables through a join table
-     * If you're in a situation where your tables are **NOT** directly
-     * related, but instead are joined by a _join table_, you can still use
-     * the `select()` method to query the related data. The join table needs
-     * to have the foreign keys as part of its composite primary key.
-     *
-     * @example Query referenced tables through a join table
-     * ```ts
-     * const { data, error } = await supabase
-     *   .from('users')
-     *   .select(`
-     *     name,
-     *     teams (
-     *       name
-     *     )
-     *   `)
-     *
-     * ```
-     *
-     * @exampleSql Query referenced tables through a join table
-     * ```sql
-     * create table
-     *   users (
-     *     id int8 primary key,
-     *     name text
-     *   );
-     * create table
-     *   teams (
-     *     id int8 primary key,
-     *     name text
-     *   );
-     * -- join table
-     * create table
-     *   users_teams (
-     *     user_id int8 not null references users,
-     *     team_id int8 not null references teams,
-     *     -- both foreign keys must be part of a composite primary key
-     *     primary key (user_id, team_id)
-     *   );
-     *
-     * insert into
-     *   users (id, name)
-     * values
-     *   (1, 'Kiran'),
-     *   (2, 'Evan');
-     * insert into
-     *   teams (id, name)
-     * values
-     *   (1, 'Green'),
-     *   (2, 'Blue');
-     * insert into
-     *   users_teams (user_id, team_id)
-     * values
-     *   (1, 1),
-     *   (1, 2),
-     *   (2, 2);
-     * ```
-     *
-     * @exampleResponse Query referenced tables through a join table
-     * ```json
-     *   {
-     *     "data": [
-     *       {
-     *         "name": "Kiran",
-     *         "teams": [
-     *           {
-     *             "name": "Green"
-     *           },
-     *           {
-     *             "name": "Blue"
-     *           }
-     *         ]
-     *       },
-     *       {
-     *         "name": "Evan",
-     *         "teams": [
-     *           {
-     *             "name": "Blue"
-     *           }
-     *         ]
-     *       }
-     *     ],
-     *     "status": 200,
-     *     "statusText": "OK"
-     *   }
-     *
-     * ```
-     *
-     * @exampleDescription Query the same referenced table multiple times
-     * If you need to query the same referenced table twice, use the name of the
-     * joined column to identify which join to use. You can also give each
-     * column an alias.
-     *
-     * @example Query the same referenced table multiple times
-     * ```ts
-     * const { data, error } = await supabase
-     *   .from('messages')
-     *   .select(`
-     *     content,
-     *     from:sender_id(name),
-     *     to:receiver_id(name)
-     *   `)
-     *
-     * // To infer types, use the name of the table (in this case `users`) and
-     * // the name of the foreign key constraint.
-     * const { data, error } = await supabase
-     *   .from('messages')
-     *   .select(`
-     *     content,
-     *     from:users!messages_sender_id_fkey(name),
-     *     to:users!messages_receiver_id_fkey(name)
-     *   `)
-     * ```
-     *
-     * @exampleSql Query the same referenced table multiple times
-     * ```sql
-     *  create table
-     *  users (id int8 primary key, name text);
-     *
-     *  create table
-     *    messages (
-     *      sender_id int8 not null references users,
-     *      receiver_id int8 not null references users,
-     *      content text
-     *    );
-     *
-     *  insert into
-     *    users (id, name)
-     *  values
-     *    (1, 'Kiran'),
-     *    (2, 'Evan');
-     *
-     *  insert into
-     *    messages (sender_id, receiver_id, content)
-     *  values
-     *    (1, 2, '👋');
-     *  ```
-     * ```
-     *
-     * @exampleResponse Query the same referenced table multiple times
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "content": "👋",
-     *       "from": {
-     *         "name": "Kiran"
-     *       },
-     *       "to": {
-     *         "name": "Evan"
-     *       }
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Query nested foreign tables through a join table
-     * You can use the result of a joined table to gather data in
-     * another foreign table. With multiple references to the same foreign
-     * table you must specify the column on which to conduct the join.
-     *
-     * @example Query nested foreign tables through a join table
-     * ```ts
-     *   const { data, error } = await supabase
-     *     .from('games')
-     *     .select(`
-     *       game_id:id,
-     *       away_team:teams!games_away_team_fkey (
-     *         users (
-     *           id,
-     *           name
-     *         )
-     *       )
-     *     `)
-     *
-     * ```
-     *
-     * @exampleSql Query nested foreign tables through a join table
-     * ```sql
-     * ```sql
-     * create table
-     *   users (
-     *     id int8 primary key,
-     *     name text
-     *   );
-     * create table
-     *   teams (
-     *     id int8 primary key,
-     *     name text
-     *   );
-     * -- join table
-     * create table
-     *   users_teams (
-     *     user_id int8 not null references users,
-     *     team_id int8 not null references teams,
-     *
-     *     primary key (user_id, team_id)
-     *   );
-     * create table
-     *   games (
-     *     id int8 primary key,
-     *     home_team int8 not null references teams,
-     *     away_team int8 not null references teams,
-     *     name text
-     *   );
-     *
-     * insert into users (id, name)
-     * values
-     *   (1, 'Kiran'),
-     *   (2, 'Evan');
-     * insert into
-     *   teams (id, name)
-     * values
-     *   (1, 'Green'),
-     *   (2, 'Blue');
-     * insert into
-     *   users_teams (user_id, team_id)
-     * values
-     *   (1, 1),
-     *   (1, 2),
-     *   (2, 2);
-     * insert into
-     *   games (id, home_team, away_team, name)
-     * values
-     *   (1, 1, 2, 'Green vs Blue'),
-     *   (2, 2, 1, 'Blue vs Green');
-     * ```
-     *
-     * @exampleResponse Query nested foreign tables through a join table
-     * ```json
-     *   {
-     *     "data": [
-     *       {
-     *         "game_id": 1,
-     *         "away_team": {
-     *           "users": [
-     *             {
-     *               "id": 1,
-     *               "name": "Kiran"
-     *             },
-     *             {
-     *               "id": 2,
-     *               "name": "Evan"
-     *             }
-     *           ]
-     *         }
-     *       },
-     *       {
-     *         "game_id": 2,
-     *         "away_team": {
-     *           "users": [
-     *             {
-     *               "id": 1,
-     *               "name": "Kiran"
-     *             }
-     *           ]
-     *         }
-     *       }
-     *     ],
-     *     "status": 200,
-     *     "statusText": "OK"
-     *   }
-     *
-     * ```
-     *
-     * @exampleDescription Filtering through referenced tables
-     * If the filter on a referenced table's column is not satisfied, the referenced
-     * table returns `[]` or `null` but the parent table is not filtered out.
-     * If you want to filter out the parent table rows, use the `!inner` hint
-     *
-     * @example Filtering through referenced tables
-     * ```ts
-     * const { data, error } = await supabase
-     *   .from('instruments')
-     *   .select('name, orchestral_sections(*)')
-     *   .eq('orchestral_sections.name', 'percussion')
-     * ```
-     *
-     * @exampleSql Filtering through referenced tables
-     * ```sql
-     * create table
-     *   orchestral_sections (id int8 primary key, name text);
-     * create table
-     *   instruments (
-     *     id int8 primary key,
-     *     section_id int8 not null references orchestral_sections,
-     *     name text
-     *   );
-     *
-     * insert into
-     *   orchestral_sections (id, name)
-     * values
-     *   (1, 'strings'),
-     *   (2, 'woodwinds');
-     * insert into
-     *   instruments (id, section_id, name)
-     * values
-     *   (1, 2, 'flute'),
-     *   (2, 1, 'violin');
-     * ```
-     *
-     * @exampleResponse Filtering through referenced tables
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "name": "flute",
-     *       "orchestral_sections": null
-     *     },
-     *     {
-     *       "name": "violin",
-     *       "orchestral_sections": null
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Querying referenced table with count
-     * You can get the number of rows in a related table by using the
-     * **count** property.
-     *
-     * @example Querying referenced table with count
-     * ```ts
-     * const { data, error } = await supabase
-     *   .from('orchestral_sections')
-     *   .select(`*, instruments(count)`)
-     * ```
-     *
-     * @exampleSql Querying referenced table with count
-     * ```sql
-     * create table orchestral_sections (
-     *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-     *   "name" text
-     * );
-     *
-     * create table characters (
-     *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-     *   "name" text,
-     *   "section_id" "uuid" references public.orchestral_sections on delete cascade
-     * );
-     *
-     * with section as (
-     *   insert into orchestral_sections (name)
-     *   values ('strings') returning id
-     * )
-     * insert into instruments (name, section_id) values
-     * ('violin', (select id from section)),
-     * ('viola', (select id from section)),
-     * ('cello', (select id from section)),
-     * ('double bass', (select id from section));
-     * ```
-     *
-     * @exampleResponse Querying referenced table with count
-     * ```json
-     * [
-     *   {
-     *     "id": "693694e7-d993-4360-a6d7-6294e325d9b6",
-     *     "name": "strings",
-     *     "instruments": [
-     *       {
-     *         "count": 4
-     *       }
-     *     ]
-     *   }
-     * ]
-     * ```
-     *
-     * @exampleDescription Querying with count option
-     * You can get the number of rows by using the
-     * [count](/docs/reference/javascript/select#parameters) option.
-     *
-     * @example Querying with count option
-     * ```ts
-     * const { count, error } = await supabase
-     *   .from('characters')
-     *   .select('*', { count: 'exact', head: true })
-     * ```
-     *
-     * @exampleSql Querying with count option
-     * ```sql
-     * create table
-     *   characters (id int8 primary key, name text);
-     *
-     * insert into
-     *   characters (id, name)
-     * values
-     *   (1, 'Luke'),
-     *   (2, 'Leia'),
-     *   (3, 'Han');
-     * ```
-     *
-     * @exampleResponse Querying with count option
-     * ```json
-     * {
-     *   "count": 3,
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Querying JSON data
-     * You can select and filter data inside of
-     * [JSON](/docs/guides/database/json) columns. Postgres offers some
-     * [operators](/docs/guides/database/json#query-the-jsonb-data) for
-     * querying JSON data.
-     *
-     * @example Querying JSON data
-     * ```ts
-     * const { data, error } = await supabase
-     *   .from('users')
-     *   .select(`
-     *     id, name,
-     *     address->city
-     *   `)
-     * ```
-     *
-     * @exampleSql Querying JSON data
-     * ```sql
-     * create table
-     *   users (
-     *     id int8 primary key,
-     *     name text,
-     *     address jsonb
-     *   );
-     *
-     * insert into
-     *   users (id, name, address)
-     * values
-     *   (1, 'Frodo', '{"city":"Hobbiton"}');
-     * ```
-     *
-     * @exampleResponse Querying JSON data
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "id": 1,
-     *       "name": "Frodo",
-     *       "city": "Hobbiton"
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Querying referenced table with inner join
-     * If you don't want to return the referenced table contents, you can leave the parenthesis empty.
-     * Like `.select('name, orchestral_sections!inner()')`.
-     *
-     * @example Querying referenced table with inner join
-     * ```ts
-     * const { data, error } = await supabase
-     *   .from('instruments')
-     *   .select('name, orchestral_sections!inner(name)')
-     *   .eq('orchestral_sections.name', 'woodwinds')
-     *   .limit(1)
-     * ```
-     *
-     * @exampleSql Querying referenced table with inner join
-     * ```sql
-     * create table orchestral_sections (
-     *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-     *   "name" text
-     * );
-     *
-     * create table instruments (
-     *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-     *   "name" text,
-     *   "section_id" "uuid" references public.orchestral_sections on delete cascade
-     * );
-     *
-     * with section as (
-     *   insert into orchestral_sections (name)
-     *   values ('woodwinds') returning id
-     * )
-     * insert into instruments (name, section_id) values
-     * ('flute', (select id from section)),
-     * ('clarinet', (select id from section)),
-     * ('bassoon', (select id from section)),
-     * ('piccolo', (select id from section));
-     * ```
-     *
-     * @exampleResponse Querying referenced table with inner join
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "name": "flute",
-     *       "orchestral_sections": {"name": "woodwinds"}
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-     *
-     * @exampleDescription Switching schemas per query
-     * In addition to setting the schema during initialization, you can also switch schemas on a per-query basis.
-     * Make sure you've set up your [database privileges and API settings](/docs/guides/api/using-custom-schemas).
-     *
-     * @example Switching schemas per query
-     * ```ts
-     * const { data, error } = await supabase
-     *   .schema('myschema')
-     *   .from('mytable')
-     *   .select()
-     * ```
-     *
-     * @exampleSql Switching schemas per query
-     * ```sql
-     * create schema myschema;
-     *
-     * create table myschema.mytable (
-     *   id uuid primary key default gen_random_uuid(),
-     *   data text
-     * );
-     *
-     * insert into myschema.mytable (data) values ('mydata');
-     * ```
-     *
-     * @exampleResponse Switching schemas per query
-     * ```json
-     * {
-     *   "data": [
-     *     {
-     *       "id": "4162e008-27b0-4c0f-82dc-ccaeee9a624d",
-     *       "data": "mydata"
-     *     }
-     *   ],
-     *   "status": 200,
-     *   "statusText": "OK"
-     * }
-     * ```
-       */
-  select<Query extends string = '*', ResultOne = GetResult<Schema, Relation$1['Row'], RelationName, Relationships, Query, ClientOptions>>(columns?: Query, options?: {
-    head?: boolean;
-    count?: 'exact' | 'planned' | 'estimated' | (string & {});
-  }): PostgrestFilterBuilder<ClientOptions, Schema, Relation$1['Row'], ResultOne[], RelationName, Relationships, 'GET'>;
-  /**
-   * Perform an INSERT into the table or view.
-   *
-   * By default, inserted rows are not returned. To return it, chain the call
-   * with `.select()`.
-   *
-   * @param values - The values to insert. Pass an object to insert a single row
-   * or an array to insert multiple rows.
-   *
-   * @param options - Named parameters
-   *
-   * @param options.count - Count algorithm to use to count inserted rows.
-   *
-   * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-   * hood.
-   *
-   * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-   * statistics under the hood.
-   *
-   * `"estimated"`: Uses exact count for low numbers and planned count for high
-   * numbers.
-   *
-   * @param options.defaultToNull - Make missing fields default to `null`.
-   * Otherwise, use the default value for the column. Only applies for bulk
-   * inserts.
-   *
-   * @category Database
-   *
-   * @example Create a record
-   * ```ts
-   * const { error } = await supabase
-   *   .from('countries')
-   *   .insert({ id: 1, name: 'Mordor' })
-   * ```
-   *
-   * @exampleSql Create a record
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   * ```
-   *
-   * @exampleResponse Create a record
-   * ```json
-   * {
-   *   "status": 201,
-   *   "statusText": ""
-   * }
-   * ```
-   *
-   * @exampleDescription Handling errors
-   * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT INSERT ON public.countries TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-   *
-   * @example Handling errors
+   * @example Returns the URL which triggers the download of an asset in a public bucket
    * ```js
-   * const { error } = await supabase.from('countries').insert({ id: 1, name: 'Mordor' })
-   * if (error) console.error(error)
-   * ```
-   *
-   * @example Create a record and return it
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('countries')
-   *   .insert({ id: 1, name: 'Mordor' })
-   *   .select()
-   * ```
-   *
-   * @exampleSql Create a record and return it
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   * ```
-   *
-   * @exampleResponse Create a record and return it
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Mordor"
-   *     }
-   *   ],
-   *   "status": 201,
-   *   "statusText": ""
-   * }
-   * ```
-   *
-   * @exampleDescription Bulk create
-   * A bulk create operation is handled in a single transaction.
-   * If any of the inserts fail, none of the rows are inserted.
-   *
-   * @example Bulk create
-   * ```ts
-   * const { error } = await supabase
-   *   .from('countries')
-   *   .insert([
-   *     { id: 1, name: 'Mordor' },
-   *     { id: 1, name: 'The Shire' },
-   *   ])
-   * ```
-   *
-   * @exampleSql Bulk create
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   * ```
-   *
-   * @exampleResponse Bulk create
-   * ```json
-   * {
-   *   "error": {
-   *     "code": "23505",
-   *     "details": "Key (id)=(1) already exists.",
-   *     "hint": null,
-   *     "message": "duplicate key value violates unique constraint \"countries_pkey\""
-   *   },
-   *   "status": 409,
-   *   "statusText": ""
-   * }
-   * ```
-   */
-  insert<Row extends (Relation$1 extends {
-    Insert: unknown;
-  } ? Relation$1['Insert'] : never)>(values: RejectExcessProperties<Relation$1 extends {
-    Insert: unknown;
-  } ? Relation$1['Insert'] : never, Row> | RejectExcessProperties<Relation$1 extends {
-    Insert: unknown;
-  } ? Relation$1['Insert'] : never, Row>[], {
-    count,
-    defaultToNull
-  }?: {
-    count?: 'exact' | 'planned' | 'estimated' | (string & {});
-    defaultToNull?: boolean;
-  }): PostgrestFilterBuilder<ClientOptions, Schema, Relation$1['Row'], null, RelationName, Relationships, 'POST'>;
-  /**
-   * Perform an UPSERT on the table or view. Depending on the column(s) passed
-   * to `onConflict`, `.upsert()` allows you to perform the equivalent of
-   * `.insert()` if a row with the corresponding `onConflict` columns doesn't
-   * exist, or if it does exist, perform an alternative action depending on
-   * `ignoreDuplicates`.
-   *
-   * By default, upserted rows are not returned. To return it, chain the call
-   * with `.select()`.
-   *
-   * @param values - The values to upsert with. Pass an object to upsert a
-   * single row or an array to upsert multiple rows.
-   *
-   * @param options - Named parameters
-   *
-   * @param options.onConflict - Comma-separated UNIQUE column(s) to specify how
-   * duplicate rows are determined. Two rows are duplicates if all the
-   * `onConflict` columns are equal.
-   *
-   * @param options.ignoreDuplicates - If `true`, duplicate rows are ignored. If
-   * `false`, duplicate rows are merged with existing rows.
-   *
-   * @param options.count - Count algorithm to use to count upserted rows.
-   *
-   * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-   * hood.
-   *
-   * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-   * statistics under the hood.
-   *
-   * `"estimated"`: Uses exact count for low numbers and planned count for high
-   * numbers.
-   *
-   * @param options.defaultToNull - Make missing fields default to `null`.
-   * Otherwise, use the default value for the column. This only applies when
-   * inserting new rows, not when merging with existing rows under
-   * `ignoreDuplicates: false`. This also only applies when doing bulk upserts.
-   *
-   * @example Upsert a single row using a unique key
-   * ```ts
-   * // Upserting a single row, overwriting based on the 'username' unique column
-   * const { data, error } = await supabase
-   *   .from('users')
-   *   .upsert({ username: 'supabot' }, { onConflict: 'username' })
-   *
-   * // Example response:
-   * // {
-   * //   data: [
-   * //     { id: 4, message: 'bar', username: 'supabot' }
-   * //   ],
-   * //   error: null
-   * // }
-   * ```
-   *
-   * @example Upsert with conflict resolution and exact row counting
-   * ```ts
-   * // Upserting and returning exact count
-   * const { data, error, count } = await supabase
-   *   .from('users')
-   *   .upsert(
-   *     {
-   *       id: 3,
-   *       message: 'foo',
-   *       username: 'supabot'
-   *     },
-   *     {
-   *       onConflict: 'username',
-   *       count: 'exact'
-   *     }
-   *   )
-   *
-   * // Example response:
-   * // {
-   * //   data: [
-   * //     {
-   * //       id: 42,
-   * //       handle: "saoirse",
-   * //       display_name: "Saoirse"
-   * //     }
-   * //   ],
-   * //   count: 1,
-   * //   error: null
-   * // }
-   * ```
-   *
-   * @category Database
-   *
-   * @remarks
-   * - Primary keys must be included in `values` to use upsert.
-   *
-   * @example Upsert your data
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('instruments')
-   *   .upsert({ id: 1, name: 'piano' })
-   *   .select()
-   * ```
-   *
-   * @exampleSql Upsert your data
-   * ```sql
-   * create table
-   *   instruments (id int8 primary key, name text);
-   *
-   * insert into
-   *   instruments (id, name)
-   * values
-   *   (1, 'harpsichord');
-   * ```
-   *
-   * @exampleResponse Upsert your data
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "piano"
-   *     }
-   *   ],
-   *   "status": 201,
-   *   "statusText": ""
-   * }
-   * ```
-   *
-   * @exampleDescription Handling errors
-   * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT INSERT, UPDATE ON public.instruments TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-   *
-   * @example Handling errors
-   * ```js
-   * const { data, error } = await supabase.from('instruments').upsert({ id: 1, name: 'piano' }).select()
-   * if (error) console.error(error)
-   * ```
-   *
-   * @example Bulk Upsert your data
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('instruments')
-   *   .upsert([
-   *     { id: 1, name: 'piano' },
-   *     { id: 2, name: 'harp' },
-   *   ])
-   *   .select()
-   * ```
-   *
-   * @exampleSql Bulk Upsert your data
-   * ```sql
-   * create table
-   *   instruments (id int8 primary key, name text);
-   *
-   * insert into
-   *   instruments (id, name)
-   * values
-   *   (1, 'harpsichord');
-   * ```
-   *
-   * @exampleResponse Bulk Upsert your data
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "piano"
-   *     },
-   *     {
-   *       "id": 2,
-   *       "name": "harp"
-   *     }
-   *   ],
-   *   "status": 201,
-   *   "statusText": ""
-   * }
-   * ```
-   *
-   * @exampleDescription Upserting into tables with constraints
-   * In the following query, `upsert()` implicitly uses the `id`
-   * (primary key) column to determine conflicts. If there is no existing
-   * row with the same `id`, `upsert()` inserts a new row, which
-   * will fail in this case as there is already a row with `handle` `"saoirse"`.
-   * Using the `onConflict` option, you can instruct `upsert()` to use
-   * another column with a unique constraint to determine conflicts.
-   *
-   * @example Upserting into tables with constraints
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('users')
-   *   .upsert({ id: 42, handle: 'saoirse', display_name: 'Saoirse' })
-   *   .select()
-   * ```
-   *
-   * @exampleSql Upserting into tables with constraints
-   * ```sql
-   * create table
-   *   users (
-   *     id int8 generated by default as identity primary key,
-   *     handle text not null unique,
-   *     display_name text
-   *   );
-   *
-   * insert into
-   *   users (id, handle, display_name)
-   * values
-   *   (1, 'saoirse', null);
-   * ```
-   *
-   * @exampleResponse Upserting into tables with constraints
-   * ```json
-   * {
-   *   "error": {
-   *     "code": "23505",
-   *     "details": "Key (handle)=(saoirse) already exists.",
-   *     "hint": null,
-   *     "message": "duplicate key value violates unique constraint \"users_handle_key\""
-   *   },
-   *   "status": 409,
-   *   "statusText": ""
-   * }
-   * ```
-   */
-  upsert<Row extends (Relation$1 extends {
-    Insert: unknown;
-  } ? Relation$1['Insert'] : never)>(values: RejectExcessProperties<Relation$1 extends {
-    Insert: unknown;
-  } ? Relation$1['Insert'] : never, Row> | RejectExcessProperties<Relation$1 extends {
-    Insert: unknown;
-  } ? Relation$1['Insert'] : never, Row>[], {
-    onConflict,
-    ignoreDuplicates,
-    count,
-    defaultToNull
-  }?: {
-    onConflict?: string;
-    ignoreDuplicates?: boolean;
-    count?: 'exact' | 'planned' | 'estimated' | (string & {});
-    defaultToNull?: boolean;
-  }): PostgrestFilterBuilder<ClientOptions, Schema, Relation$1['Row'], null, RelationName, Relationships, 'POST'>;
-  /**
-   * Perform an UPDATE on the table or view.
-   *
-   * By default, updated rows are not returned. To return it, chain the call
-   * with `.select()` after filters.
-   *
-   * @param values - The values to update with
-   *
-   * @param options - Named parameters
-   *
-   * @param options.count - Count algorithm to use to count updated rows.
-   *
-   * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-   * hood.
-   *
-   * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-   * statistics under the hood.
-   *
-   * `"estimated"`: Uses exact count for low numbers and planned count for high
-   * numbers.
-   *
-   * @category Database
-   *
-   * @remarks
-   * - `update()` should always be combined with [Filters](/docs/reference/javascript/using-filters) to target the item(s) you wish to update.
-   *
-   * @example Updating your data
-   * ```ts
-   * const { error } = await supabase
-   *   .from('instruments')
-   *   .update({ name: 'piano' })
-   *   .eq('id', 1)
-   * ```
-   *
-   * @exampleSql Updating your data
-   * ```sql
-   * create table
-   *   instruments (id int8 primary key, name text);
-   *
-   * insert into
-   *   instruments (id, name)
-   * values
-   *   (1, 'harpsichord');
-   * ```
-   *
-   * @exampleResponse Updating your data
-   * ```json
-   * {
-   *   "status": 204,
-   *   "statusText": ""
-   * }
-   * ```
-   *
-   * @exampleDescription Handling errors
-   * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT UPDATE ON public.instruments TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-   *
-   * @example Handling errors
-   * ```js
-   * const { error } = await supabase.from('instruments').update({ name: 'piano' }).eq('id', 1)
-   * if (error) console.error(error)
-   * ```
-   *
-   * @example Update a record and return it
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('instruments')
-   *   .update({ name: 'piano' })
-   *   .eq('id', 1)
-   *   .select()
-   * ```
-   *
-   * @exampleSql Update a record and return it
-   * ```sql
-   * create table
-   *   instruments (id int8 primary key, name text);
-   *
-   * insert into
-   *   instruments (id, name)
-   * values
-   *   (1, 'harpsichord');
-   * ```
-   *
-   * @exampleResponse Update a record and return it
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "piano"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @exampleDescription Updating JSON data
-   * Postgres offers some
-   * [operators](/docs/guides/database/json#query-the-jsonb-data) for
-   * working with JSON data. Currently, it is only possible to update the entire JSON document.
-   *
-   * @example Updating JSON data
-   * ```ts
-   * const { data, error } = await supabase
-   *   .from('users')
-   *   .update({
-   *     address: {
-   *       street: 'Melrose Place',
-   *       postcode: 90210
-   *     }
+   * const { data } = supabase
+   *   .storage
+   *   .from('public-bucket')
+   *   .getPublicUrl('folder/avatar1.png', {
+   *     download: true,
    *   })
-   *   .eq('address->postcode', 90210)
-   *   .select()
    * ```
    *
-   * @exampleSql Updating JSON data
-   * ```sql
-   * create table
-   *   users (
-   *     id int8 primary key,
-   *     name text,
-   *     address jsonb
-   *   );
+   * @remarks
+   * - The bucket needs to be set to public, either via [updateBucket()](/docs/reference/javascript/storage-updatebucket) or by going to Storage on [supabase.com/dashboard](https://supabase.com/dashboard), clicking the overflow menu on a bucket and choosing "Make public"
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  getPublicUrl(path: string, options?: {
+    download?: string | boolean;
+    transform?: TransformOptions;
+    cacheNonce?: string;
+    versionId?: string;
+  }): {
+    data: {
+      publicUrl: string;
+    };
+  };
+  /**
+   * Deletes files within the same bucket
    *
-   * insert into
-   *   users (id, name, address)
-   * values
-   *   (1, 'Michael', '{ "postcode": 90210 }');
+   * Returns an array of FileObject entries for the deleted files. Note that deprecated
+   * fields like `bucket_id` may or may not be present in the response - do not rely on them.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param paths An array of files to delete. Each entry is either a path (deletes whichever
+   * version is currently at that path, e.g. `'folder/image.png'`), or `{ path, versionId }` to
+   * delete an exact version current or archived (e.g. `{ path: 'folder/image.png', versionId: '...' }`).
+   * @returns Promise with response containing array of deleted file objects or error
+   *
+   * @example Delete file
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .remove(['folder/avatar1.png'])
    * ```
    *
-   * @exampleResponse Updating JSON data
+   * Response:
+   * ```json
+   * {
+   *   "data": [],
+   *   "error": null
+   * }
+   * ```
+   *
+   * @example Delete a specific object version
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .remove([{ path: 'folder/avatar1.png', versionId: 'noncurrent-version-id' }])
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `delete` and `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  remove(paths: DeleteObjectEntry[]): Promise<{
+    data: FileObject[];
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Purges the CDN cache for a single object in this bucket.
+   *
+   * Maps to `DELETE /cdn/{bucket}/{path}` on the Storage API. The server
+   * issues a CDN invalidation for the object and returns `{ message: 'success' }`.
+   *
+   * **Requires the `service_role` key.** The underlying endpoint enforces
+   * `service_role` JWT — calls made with the anon key or a user JWT will be
+   * rejected by the server.
+   *
+   * **Hosted CDN feature.** On self-hosted Supabase, the Storage service must
+   * have `CDN_PURGE_ENDPOINT_URL` configured and the `purgeCache` tenant
+   * feature enabled, otherwise the server returns an error.
+   *
+   * Operates on a single object path. There is no wildcard or recursion: pass
+   * the exact path of the object you want invalidated.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The path (relative to the bucket) of the object to purge, e.g. `folder/avatar.png`.
+   * @param options Optional purge cache options.
+   * @param options.transformations If true, purges only transformations (resized/formatted variants), leaving the original cached file intact.
+   * @param parameters Optional fetch parameters such as an `AbortController` signal.
+   * @returns Promise with `{ data: { message }, error: null }` on success or `{ data: null, error }` on failure.
+   *
+   * @example Purge a single cached object
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .purgeCache('folder/avatar1.png')
+   * ```
+   *
+   * @example Purge only transformations for a single object
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .purgeCache('folder/avatar1.png', { transformations: true })
+   * ```
+   */
+  purgeCache(path: string, options?: PurgeCacheOptions, parameters?: FetchParameters): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Get file metadata
+   * @param id the file id to retrieve metadata
+   */
+  /**
+   * Update file metadata
+   * @param id the file id to update metadata
+   * @param meta the new file metadata
+   */
+  /**
+   * Lists all the files and folders within a path of the bucket.
+   *
+   * **Important:** For folder entries, fields like `id`, `updated_at`, `created_at`,
+   * `last_accessed_at`, and `metadata` will be `null`. Only files have these fields populated.
+   * Additionally, deprecated fields like `bucket_id`, `owner`, and `buckets` are NOT returned
+   * by this method.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param path The folder path.
+   * @param options Search options including limit (defaults to 100), offset, sortBy, and search
+   * @param parameters Optional fetch parameters including signal for cancellation
+   * @returns Promise with response containing array of files/folders or error
+   *
+   * @example List files in a bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .list('folder', {
+   *     limit: 100,
+   *     offset: 0,
+   *     sortBy: { column: 'name', order: 'asc' },
+   *   })
+   *
+   * // Handle files vs folders
+   * data?.forEach(item => {
+   *   if (item.id !== null) {
+   *     // It's a file
+   *     console.log('File:', item.name, 'Size:', item.metadata?.size)
+   *   } else {
+   *     // It's a folder
+   *     console.log('Folder:', item.name)
+   *   }
+   * })
+   * ```
+   *
+   * Response:
    * ```json
    * {
    *   "data": [
    *     {
-   *       "id": 1,
-   *       "name": "Michael",
-   *       "address": {
-   *         "street": "Melrose Place",
-   *         "postcode": 90210
+   *       "name": "avatar1.png",
+   *       "id": "e668cf7f-821b-4a2f-9dce-7dfa5dd1cfd2",
+   *       "updated_at": "2024-05-22T23:06:05.580Z",
+   *       "created_at": "2024-05-22T23:04:34.443Z",
+   *       "last_accessed_at": "2024-05-22T23:04:34.443Z",
+   *       "metadata": {
+   *         "eTag": "\"c5e8c553235d9af30ef4f6e280790b92\"",
+   *         "size": 32175,
+   *         "mimetype": "image/png",
+   *         "cacheControl": "max-age=3600",
+   *         "lastModified": "2024-05-22T23:06:05.574Z",
+   *         "contentLength": 32175,
+   *         "httpStatusCode": 200
    *       }
    *     }
    *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   */
-  update<Row extends (Relation$1 extends {
-    Update: unknown;
-  } ? Relation$1['Update'] : never)>(values: RejectExcessProperties<Relation$1 extends {
-    Update: unknown;
-  } ? Relation$1['Update'] : never, Row>, {
-    count
-  }?: {
-    count?: 'exact' | 'planned' | 'estimated' | (string & {});
-  }): PostgrestFilterBuilder<ClientOptions, Schema, Relation$1['Row'], null, RelationName, Relationships, 'PATCH'>;
-  /**
-   * Perform a DELETE on the table or view.
-   *
-   * By default, deleted rows are not returned. To return it, chain the call
-   * with `.select()` after filters.
-   *
-   * @param options - Named parameters
-   *
-   * @param options.count - Count algorithm to use to count deleted rows.
-   *
-   * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-   * hood.
-   *
-   * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-   * statistics under the hood.
-   *
-   * `"estimated"`: Uses exact count for low numbers and planned count for high
-   * numbers.
-   *
-   * @category Database
-   *
-   * @remarks
-   * - `delete()` should always be combined with [filters](/docs/reference/javascript/using-filters) to target the item(s) you wish to delete.
-   * - If you use `delete()` with filters and you have
-   *   [RLS](/docs/learn/auth-deep-dive/auth-row-level-security) enabled, only
-   *   rows visible through `SELECT` policies are deleted. Note that by default
-   *   no rows are visible, so you need at least one `SELECT`/`ALL` policy that
-   *   makes the rows visible.
-   * - When using `delete().in()`, specify an array of values to target multiple rows with a single query. This is particularly useful for batch deleting entries that share common criteria, such as deleting users by their IDs. Ensure that the array you provide accurately represents all records you intend to delete to avoid unintended data removal.
-   *
-   * @example Delete a single record
-   * ```ts
-   * const response = await supabase
-   *   .from('countries')
-   *   .delete()
-   *   .eq('id', 1)
-   * ```
-   *
-   * @exampleSql Delete a single record
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   *
-   * insert into
-   *   countries (id, name)
-   * values
-   *   (1, 'Mordor');
-   * ```
-   *
-   * @exampleResponse Delete a single record
-   * ```json
-   * {
-   *   "status": 204,
-   *   "statusText": ""
+   *   "error": null
    * }
    * ```
    *
-   * @exampleDescription Handling errors
-   * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT DELETE ON public.countries TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-   *
-   * @example Handling errors
+   * @example Search files in a bucket
    * ```js
-   * const { error } = await supabase.from('countries').delete().eq('id', 1)
-   * if (error) console.error(error)
-   * ```
-   *
-   * @example Delete a record and return it
-   * ```ts
    * const { data, error } = await supabase
-   *   .from('countries')
-   *   .delete()
-   *   .eq('id', 1)
-   *   .select()
+   *   .storage
+   *   .from('avatars')
+   *   .list('folder', {
+   *     limit: 100,
+   *     offset: 0,
+   *     sortBy: { column: 'name', order: 'asc' },
+   *     search: 'jon'
+   *   })
    * ```
-   *
-   * @exampleSql Delete a record and return it
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   *
-   * insert into
-   *   countries (id, name)
-   * values
-   *   (1, 'Mordor');
-   * ```
-   *
-   * @exampleResponse Delete a record and return it
-   * ```json
-   * {
-   *   "data": [
-   *     {
-   *       "id": 1,
-   *       "name": "Mordor"
-   *     }
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example Delete multiple records
-   * ```ts
-   * const response = await supabase
-   *   .from('countries')
-   *   .delete()
-   *   .in('id', [1, 2, 3])
-   * ```
-   *
-   * @exampleSql Delete multiple records
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   *
-   * insert into
-   *   countries (id, name)
-   * values
-   *   (1, 'Rohan'), (2, 'The Shire'), (3, 'Mordor');
-   * ```
-   *
-   * @exampleResponse Delete multiple records
-   * ```json
-   * {
-   *   "status": 204,
-   *   "statusText": ""
-   * }
-   * ```
-   */
-  delete({
-    count
-  }?: {
-    count?: 'exact' | 'planned' | 'estimated' | (string & {});
-  }): PostgrestFilterBuilder<ClientOptions, Schema, Relation$1['Row'], null, RelationName, Relationships, 'DELETE'>;
-}
-//#endregion
-//#region src/types/common/rpc.d.ts
-type IsMatchingArgs<FnArgs extends GenericFunction['Args'], PassedArgs extends GenericFunction['Args']> = [FnArgs] extends [Record<PropertyKey, never>] ? PassedArgs extends Record<PropertyKey, never> ? true : false : keyof PassedArgs extends keyof FnArgs ? PassedArgs extends FnArgs ? true : false : false;
-type MatchingFunctionArgs<Fn$1 extends GenericFunction, Args extends GenericFunction['Args']> = Fn$1 extends {
-  Args: infer A extends GenericFunction['Args'];
-} ? IsMatchingArgs<A, Args> extends true ? Fn$1 : never : false;
-type FindMatchingFunctionByArgs<FnUnion, Args extends GenericFunction['Args']> = FnUnion extends infer Fn extends GenericFunction ? MatchingFunctionArgs<Fn, Args> : false;
-type TablesAndViews$1<Schema extends GenericSchema> = Schema['Tables'] & Exclude<Schema['Views'], ''>;
-type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
-type LastOf<T> = UnionToIntersection<T extends any ? () => T : never> extends (() => infer R) ? R : never;
-type IsAny<T> = 0 extends 1 & T ? true : false;
-type ExactMatch<T, S> = [T] extends [S] ? ([S] extends [T] ? true : false) : false;
-type ExtractExactFunction<Fns, Args> = Fns extends infer F ? F extends GenericFunction ? ExactMatch<F['Args'], Args> extends true ? F : never : never : never;
-type IsNever<T> = [T] extends [never] ? true : false;
-type RpcFunctionNotFound<FnName> = {
-  Row: any;
-  Result: {
-    error: true;
-  } & "Couldn't infer function definition matching provided arguments";
-  RelationName: FnName;
-  Relationships: null;
-};
-type CrossSchemaError<TableRef extends string> = {
-  error: true;
-} & `Function returns SETOF from a different schema ('${TableRef}'). Use .overrideTypes<YourReturnType>() to specify the return type explicitly.`;
-type GetRpcFunctionFilterBuilderByArgs<Schema extends GenericSchema, FnName extends string & keyof Schema['Functions'], Args> = {
-  0: Schema['Functions'][FnName];
-  1: IsAny<Schema> extends true ? any : IsNever<Args> extends true ? IsNever<ExtractExactFunction<Schema['Functions'][FnName], Args>> extends true ? LastOf<Schema['Functions'][FnName]> : ExtractExactFunction<Schema['Functions'][FnName], Args> : Args extends Record<PropertyKey, never> ? LastOf<Schema['Functions'][FnName]> : Args extends GenericFunction['Args'] ? IsNever<LastOf<FindMatchingFunctionByArgs<Schema['Functions'][FnName], Args>>> extends true ? LastOf<Schema['Functions'][FnName]> : LastOf<FindMatchingFunctionByArgs<Schema['Functions'][FnName], Args>> : ExtractExactFunction<Schema['Functions'][FnName], Args> extends GenericFunction ? ExtractExactFunction<Schema['Functions'][FnName], Args> : any;
-}[1] extends infer Fn ? IsAny<Fn> extends true ? {
-  Row: any;
-  Result: any;
-  RelationName: FnName;
-  Relationships: null;
-} : Fn extends GenericFunction ? {
-  Row: Fn['SetofOptions'] extends GenericSetofOption ? Fn['SetofOptions']['to'] extends keyof TablesAndViews$1<Schema> ? TablesAndViews$1<Schema>[Fn['SetofOptions']['to']]['Row'] : Fn['Returns'] extends any[] ? Fn['Returns'][number] extends Record<string, unknown> ? Fn['Returns'][number] : CrossSchemaError<Fn['SetofOptions']['to'] & string> : Fn['Returns'] extends Record<string, unknown> ? Fn['Returns'] : CrossSchemaError<Fn['SetofOptions']['to'] & string> : Fn['Returns'] extends any[] ? Fn['Returns'][number] extends Record<string, unknown> ? Fn['Returns'][number] : never : Fn['Returns'] extends Record<string, unknown> ? Fn['Returns'] : never;
-  Result: Fn['SetofOptions'] extends GenericSetofOption ? Fn['SetofOptions']['isSetofReturn'] extends true ? Fn['SetofOptions']['isOneToOne'] extends true ? Fn['Returns'][] : Fn['Returns'] : Fn['Returns'] : Fn['Returns'];
-  RelationName: Fn['SetofOptions'] extends GenericSetofOption ? Fn['SetofOptions']['to'] : FnName;
-  Relationships: Fn['SetofOptions'] extends GenericSetofOption ? Fn['SetofOptions']['to'] extends keyof Schema['Tables'] ? Schema['Tables'][Fn['SetofOptions']['to']]['Relationships'] : Fn['SetofOptions']['to'] extends keyof Schema['Views'] ? Schema['Views'][Fn['SetofOptions']['to']]['Relationships'] : null : null;
-} : Fn extends false ? RpcFunctionNotFound<FnName> : RpcFunctionNotFound<FnName> : RpcFunctionNotFound<FnName>;
-//#endregion
-//#region src/PostgrestClient.d.ts
-/**
- * PostgREST client.
- *
- * @typeParam Database - Types for the schema from the [type
- * generator](https://supabase.com/docs/reference/javascript/next/typescript-support)
- *
- * @typeParam SchemaName - Postgres schema to switch to. Must be a string
- * literal, the same one passed to the constructor. If the schema is not
- * `"public"`, this must be supplied manually.
- */
-declare class PostgrestClient<Database = any, ClientOptions extends ClientServerOptions = (Database extends {
-  __InternalSupabase: infer I extends ClientServerOptions;
-} ? I : {}), SchemaName extends string & keyof Omit<Database, '__InternalSupabase'> = ('public' extends keyof Omit<Database, '__InternalSupabase'> ? 'public' : string & keyof Omit<Database, '__InternalSupabase'>), Schema extends GenericSchema = (Omit<Database, '__InternalSupabase'>[SchemaName] extends GenericSchema ? Omit<Database, '__InternalSupabase'>[SchemaName] : any)> {
-  url: string;
-  headers: Headers;
-  schemaName?: SchemaName;
-  fetch?: Fetch;
-  urlLengthLimit: number;
-  retry?: boolean;
-  /**
-   * Creates a PostgREST client.
-   *
-   * @param url - URL of the PostgREST endpoint
-   * @param options - Named parameters
-   * @param options.headers - Custom headers
-   * @param options.schema - Postgres schema to switch to
-   * @param options.fetch - Custom fetch
-   * @param options.timeout - Optional timeout in milliseconds for all requests. When set, requests will automatically abort after this duration to prevent indefinite hangs.
-   * @param options.urlLengthLimit - Maximum URL length in characters before warnings/errors are triggered. Defaults to 8000.
-   * @param options.retry - Enable or disable automatic retries for transient errors.
-   *   When enabled, idempotent requests (GET, HEAD, OPTIONS) that fail with network
-   *   errors or HTTP 503/520 responses will be automatically retried up to 3 times
-   *   with exponential backoff (1s, 2s, 4s). Defaults to `true`.
-   * @example Using supabase-js (recommended)
-   * ```ts
-   * import { createClient } from '@supabase/supabase-js'
-   *
-   * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-   * const { data, error } = await supabase.from('profiles').select('*')
-   * ```
-   *
-   * @category Database
    *
    * @remarks
-   * - A `timeout` option (in milliseconds) can be set to automatically abort requests that take too long.
-   * - A `urlLengthLimit` option (default: 8000) can be set to control when URL length warnings are included in error messages for aborted requests.
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: none
+   *   - `objects` table permissions: `select`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  list(path?: string, options?: SearchOptions, parameters?: FetchParameters): Promise<{
+    data: FileObject[];
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Lists all the files and folders within a bucket using the V2 API with pagination support.
    *
-   * @example Standalone import for bundle-sensitive environments
-   * ```ts
-   * import { PostgrestClient } from '@supabase/postgrest-js'
+   * **Important:** Folder entries in the `folders` array only contain `name` and optionally `key` —
+   * they have no `id`, timestamps, or `metadata` fields. Full file metadata is only available
+   * on entries in the `objects` array.
    *
-   * const postgrest = new PostgrestClient('https://xyzcompany.supabase.co/rest/v1', {
-   *   headers: { apikey: 'your-publishable-key' },
-   *   schema: 'public',
-   *   timeout: 30000, // 30 second timeout
+   * @experimental this method signature might change in the future
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param options Search options including prefix, cursor for pagination, limit, with_delimiter
+   * @param parameters Optional fetch parameters including signal for cancellation
+   * @returns Promise with response containing folders/objects arrays with pagination info or error
+   *
+   * @example List files with pagination
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .from('avatars')
+   *   .listV2({
+   *     prefix: 'folder/',
+   *     limit: 100,
+   *   })
+   *
+   * // Handle pagination
+   * if (data?.hasNext) {
+   *   const nextPage = await supabase
+   *     .storage
+   *     .from('avatars')
+   *     .listV2({
+   *       prefix: 'folder/',
+   *       cursor: data.nextCursor,
+   *     })
+   * }
+   *
+   * // Handle files vs folders
+   * data?.objects.forEach(file => {
+   *   if (file.id !== null) {
+   *     console.log('File:', file.name, 'Size:', file.metadata?.size)
+   *   }
+   * })
+   * data?.folders.forEach(folder => {
+   *   console.log('Folder:', folder.name)
    * })
    * ```
    */
-  constructor(url: string, {
-    headers,
-    schema,
-    fetch,
-    timeout,
-    urlLengthLimit,
-    retry
-  }?: {
-    headers?: HeadersInit;
-    schema?: SchemaName;
-    fetch?: Fetch;
-    timeout?: number;
-    urlLengthLimit?: number;
-    retry?: boolean;
-  });
+  listV2(options?: SearchV2Options, parameters?: FetchParameters): Promise<{
+    data: SearchV2Result;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  private prepareUploadFormData;
+  protected encodeMetadata(metadata: Record<string, any>): string;
+  toBase64(data: string): string;
+  private _getFinalPath;
+  private _removeEmptyFolders;
+  /** Modifies the `query`, appending values the from `transform` */
+  private applyTransformOptsToQuery;
+}
+//#endregion
+//#region src/packages/StorageBucketApi.d.ts
+declare class StorageBucketApi extends BaseApiClient<StorageError> {
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch, opts?: StorageClientOptions);
   /**
-   * Perform a query on a table or a view.
+   * Retrieves the details of all Storage buckets within an existing project.
    *
-   * @param relation - The table or view name to query
+   * @category Storage
+   * @subcategory File Buckets
+   * @param options Query parameters for listing buckets
+   * @param options.limit Maximum number of buckets to return
+   * @param options.offset Number of buckets to skip
+   * @param options.sortColumn Column to sort by ('id', 'name', 'created_at', 'updated_at')
+   * @param options.sortOrder Sort order ('asc' or 'desc')
+   * @param options.search Search term to filter bucket names
+   * @returns Promise with response containing array of buckets or error
    *
-   * @category Database
-   */
-  from<TableName$1 extends string & keyof Schema['Tables'], Table extends Schema['Tables'][TableName$1]>(relation: TableName$1): PostgrestQueryBuilder<ClientOptions, Schema, Table, TableName$1>;
-  from<ViewName extends string & keyof Schema['Views'], View extends Schema['Views'][ViewName]>(relation: ViewName): PostgrestQueryBuilder<ClientOptions, Schema, View, ViewName>;
-  /**
-   * Select a schema to query or perform an function (rpc) call.
-   *
-   * The schema needs to be on the list of exposed schemas inside Supabase.
-   *
-   * @param schema - The schema to query
-   *
-   * @category Database
-   */
-  schema<DynamicSchema extends string & keyof Omit<Database, '__InternalSupabase'>>(schema: DynamicSchema): PostgrestClient<Database, ClientOptions, DynamicSchema, Database[DynamicSchema] extends GenericSchema ? Database[DynamicSchema] : any>;
-  /**
-   * Fetch the OpenAPI description PostgREST publishes for this client's schema.
-   *
-   * The document lists only the tables, views and functions the caller's role
-   * holds privileges on; PostgREST applies that filtering server-side. The
-   * schema is the one this client was created with, so call `.schema()` first
-   * to describe a different one. Transient failures are retried according to
-   * the client's `retry` option, like any other idempotent request.
-   *
-   * @example
-   * ```ts
-   * const { data, error } = await supabase.getOpenApiSpec()
-   * ```
-   *
-   * @example Describe a schema other than the client default
-   * ```ts
-   * const { data, error } = await supabase.schema('billing').getOpenApiSpec()
-   * ```
-   *
-   * @category Database
-   */
-  getOpenApiSpec(): Promise<PostgrestSingleResponse<PostgrestOpenApiSpec>>;
-  /**
-   * Perform a function call.
-   *
-   * @param fn - The function name to call
-   * @param args - The arguments to pass to the function call
-   * @param options - Named parameters
-   * @param options.head - When set to `true`, `data` will not be returned.
-   * Useful if you only need the count.
-   * @param options.get - When set to `true`, the function will be called with
-   * read-only access mode.
-   * @param options.count - Count algorithm to use to count rows returned by the
-   * function. Only applicable for [set-returning
-   * functions](https://www.postgresql.org/docs/current/functions-srf.html).
-   *
-   * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-   * hood.
-   *
-   * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-   * statistics under the hood.
-   *
-   * `"estimated"`: Uses exact count for low numbers and planned count for high
-   * numbers.
-   *
-   * @example
-   * ```ts
-   * // For cross-schema functions where type inference fails, use overrideTypes:
-   * const { data } = await supabase
-   *   .schema('schema_b')
-   *   .rpc('function_a', {})
-   *   .overrideTypes<{ id: string; user_id: string }[]>()
-   * ```
-   *
-   * @category Database
-   *
-   * @example Call a Postgres function without arguments
-   * ```ts
-   * const { data, error } = await supabase.rpc('hello_world')
-   * ```
-   *
-   * @exampleSql Call a Postgres function without arguments
-   * ```sql
-   * create function hello_world() returns text as $$
-   *   select 'Hello world';
-   * $$ language sql;
-   * ```
-   *
-   * @exampleResponse Call a Postgres function without arguments
-   * ```json
-   * {
-   *   "data": "Hello world",
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @example Call a Postgres function with arguments
-   * ```ts
-   * const { data, error } = await supabase.rpc('echo', { say: '👋' })
-   * ```
-   *
-   * @exampleSql Call a Postgres function with arguments
-   * ```sql
-   * create function echo(say text) returns text as $$
-   *   select say;
-   * $$ language sql;
-   * ```
-   *
-   * @exampleResponse Call a Postgres function with arguments
-   * ```json
-   *   {
-   *     "data": "👋",
-   *     "status": 200,
-   *     "statusText": "OK"
-   *   }
-   *
-   * ```
-   *
-   * @exampleDescription Bulk processing
-   * You can process large payloads by passing in an array as an argument.
-   *
-   * @example Bulk processing
-   * ```ts
-   * const { data, error } = await supabase.rpc('add_one_each', { arr: [1, 2, 3] })
-   * ```
-   *
-   * @exampleSql Bulk processing
-   * ```sql
-   * create function add_one_each(arr int[]) returns int[] as $$
-   *   select array_agg(n + 1) from unnest(arr) as n;
-   * $$ language sql;
-   * ```
-   *
-   * @exampleResponse Bulk processing
-   * ```json
-   * {
-   *   "data": [
-   *     2,
-   *     3,
-   *     4
-   *   ],
-   *   "status": 200,
-   *   "statusText": "OK"
-   * }
-   * ```
-   *
-   * @exampleDescription Call a Postgres function with filters
-   * Postgres functions that return tables can also be combined with [Filters](/docs/reference/javascript/using-filters) and [Modifiers](/docs/reference/javascript/using-modifiers).
-   *
-   * @example Call a Postgres function with filters
-   * ```ts
+   * @example List buckets
+   * ```js
    * const { data, error } = await supabase
-   *   .rpc('list_stored_countries')
-   *   .eq('id', 1)
-   *   .single()
+   *   .storage
+   *   .listBuckets()
    * ```
    *
-   * @exampleSql Call a Postgres function with filters
-   * ```sql
-   * create table
-   *   countries (id int8 primary key, name text);
-   *
-   * insert into
-   *   countries (id, name)
-   * values
-   *   (1, 'Rohan'),
-   *   (2, 'The Shire');
-   *
-   * create function list_stored_countries() returns setof countries as $$
-   *   select * from countries;
-   * $$ language sql;
+   * @example List buckets with options
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .listBuckets({
+   *     limit: 10,
+   *     offset: 0,
+   *     sortColumn: 'created_at',
+   *     sortOrder: 'desc',
+   *     search: 'prod'
+   *   })
    * ```
    *
-   * @exampleResponse Call a Postgres function with filters
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  listBuckets(options?: ListBucketOptions): Promise<{
+    data: Bucket[];
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Retrieves the details of an existing Storage bucket.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket you would like to retrieve.
+   * @returns Promise with response containing bucket details or error
+   *
+   * @example Get bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .getBucket('avatars')
+   * ```
+   *
+   * Response:
    * ```json
    * {
    *   "data": {
-   *     "id": 1,
-   *     "name": "Rohan"
+   *     "id": "avatars",
+   *     "name": "avatars",
+   *     "owner": "",
+   *     "public": false,
+   *     "file_size_limit": 1024,
+   *     "allowed_mime_types": [
+   *       "image/png"
+   *     ],
+   *     "created_at": "2024-05-22T22:26:05.100Z",
+   *     "updated_at": "2024-05-22T22:26:05.100Z"
    *   },
-   *   "status": 200,
-   *   "statusText": "OK"
+   *   "error": null
    * }
    * ```
    *
-   * @example Call a read-only Postgres function
-   * ```ts
-   * const { data, error } = await supabase.rpc('hello_world', undefined, { get: true })
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  getBucket(id: string): Promise<{
+    data: Bucket;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Creates a new Storage bucket
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id A unique identifier for the bucket you are creating.
+   * @param options.public The visibility of the bucket. Public buckets don't require an authorization token to download objects, but still require a valid token for all other operations. By default, buckets are private.
+   * @param options.fileSizeLimit specifies the max file size in bytes that can be uploaded to this bucket.
+   * The global file size limit takes precedence over this value.
+   * The default value is null, which doesn't set a per bucket file size limit.
+   * @param options.allowedMimeTypes specifies the allowed mime types that this bucket can accept during upload.
+   * The default value is null, which allows files with all mime types to be uploaded.
+   * Each mime type specified can be a wildcard, e.g. image/*, or a specific mime type, e.g. image/png.
+   * @param options.type (private-beta) specifies the bucket type. see `BucketType` for more details.
+   *   - default bucket type is `STANDARD`
+   * @param options.versioningStatus the bucket's initial object versioning status.
+   * The default value is `DISABLED`
+   * @returns Promise with response containing newly created bucket name or error
+   *
+   * @example Create bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .createBucket('avatars', {
+   *     public: false,
+   *     allowedMimeTypes: ['image/png'],
+   *     fileSizeLimit: 1024
+   *   })
    * ```
    *
-   * @exampleSql Call a read-only Postgres function
-   * ```sql
-   * create function hello_world() returns text as $$
-   *   select 'Hello world';
-   * $$ language sql;
-   * ```
-   *
-   * @exampleResponse Call a read-only Postgres function
+   * Response:
    * ```json
    * {
-   *   "data": "Hello world",
-   *   "status": 200,
-   *   "statusText": "OK"
+   *   "data": {
+   *     "name": "avatars"
+   *   },
+   *   "error": null
    * }
    * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `insert`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
    */
-  rpc<FnName extends string & keyof Schema['Functions'], Args extends Schema['Functions'][FnName]['Args'] = never, FilterBuilder extends GetRpcFunctionFilterBuilderByArgs<Schema, FnName, Args> = GetRpcFunctionFilterBuilderByArgs<Schema, FnName, Args>>(fn: FnName, args?: Args, {
-    head,
-    get,
-    count
-  }?: {
-    head?: boolean;
-    get?: boolean;
-    count?: 'exact' | 'planned' | 'estimated' | (string & {});
-  }): PostgrestFilterBuilder<ClientOptions, Schema, FilterBuilder['Row'], FilterBuilder['Result'], FilterBuilder['RelationName'], FilterBuilder['Relationships'], 'RPC'>;
+  createBucket(id: string, options?: {
+    public: boolean;
+    fileSizeLimit?: number | string | null;
+    allowedMimeTypes?: string[] | null;
+    type?: BucketType;
+    versioningStatus?: CreateSettableVersioningStatus;
+  }): Promise<{
+    data: Pick<Bucket, 'name'>;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Updates a Storage bucket
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id A unique identifier for the bucket you are updating.
+   * @param options.public The visibility of the bucket. Public buckets don't require an authorization token to download objects, but still require a valid token for all other operations.
+   * @param options.fileSizeLimit specifies the max file size in bytes that can be uploaded to this bucket.
+   * The global file size limit takes precedence over this value.
+   * The default value is null, which doesn't set a per bucket file size limit.
+   * @param options.allowedMimeTypes specifies the allowed mime types that this bucket can accept during upload.
+   * The default value is null, which allows files with all mime types to be uploaded.
+   * Each mime type specified can be a wildcard, e.g. image/*, or a specific mime type, e.g. image/png.
+   * @param options.versioningStatus the bucket's new object versioning status. `DISABLED` is not
+   * valid here, there's no transition back to it once versioning has been touched.
+   * @returns Promise with response containing success message or error
+   *
+   * @example Update bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .updateBucket('avatars', {
+   *     public: false,
+   *     allowedMimeTypes: ['image/png'],
+   *     fileSizeLimit: 1024
+   *   })
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "message": "Successfully updated"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select` and `update`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  updateBucket(id: string, options: {
+    public: boolean;
+    fileSizeLimit?: number | string | null;
+    allowedMimeTypes?: string[] | null;
+    versioningStatus?: UpdateSettableVersioningStatus;
+  }): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Removes all objects inside a single bucket.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket you would like to empty.
+   * @returns Promise with success message or error
+   *
+   * @example Empty bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .emptyBucket('avatars')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "message": "Successfully emptied"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select`
+   *   - `objects` table permissions: `select` and `delete`
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  emptyBucket(id: string): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Deletes an existing bucket. A bucket can't be deleted with existing objects inside it.
+   * You must first `empty()` the bucket.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket you would like to delete.
+   * @returns Promise with success message or error
+   *
+   * @example Delete bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .deleteBucket('avatars')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "message": "Successfully deleted"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select` and `delete`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  deleteBucket(id: string): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Returns the lifecycle policy stored on a bucket.
+   *
+   * Fails with `NoSuchLifecycleConfiguration` when the bucket has no policy.
+   *
+   * These rules expire previous versions of objects, not the current one.
+   * Turn versioning on or there is nothing for the policy to act on.
+   * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
+   * for the project.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket.
+   * @returns Promise with the lifecycle configuration or error
+   *
+   * @example Get lifecycle configuration
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .getBucketLifecycle('avatars')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "rules": [
+   *       {
+   *         "id": "expire-history",
+   *         "status": "Enabled",
+   *         "filter": {},
+   *         "noncurrentVersionExpiration": {
+   *           "noncurrentDays": 30,
+   *           "newerNoncurrentVersions": 2
+   *         }
+   *       }
+   *     ]
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  getBucketLifecycle(id: string): Promise<{
+    data: BucketLifecycleConfiguration;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Replaces the lifecycle policy on a bucket.
+   *
+   * The `rules` array you send is the whole policy. Anything previously stored
+   * is overwritten. Send at least one rule. Call {@link deleteBucketLifecycle}
+   * to remove the policy.
+   *
+   * Each rule currently supports only `noncurrentVersionExpiration`. `filter`
+   * is required and must be `{}`. Prefix filters, tag filters, and current-object
+   * expiration are rejected. Rule IDs must be unique. Omit `id` and the
+   * server generates one.
+   *
+   * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
+   * for the project.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket.
+   * @param configuration The full lifecycle configuration to store.
+   * @returns Promise with the stored configuration or error
+   *
+   * @example Replace lifecycle configuration
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .updateBucketLifecycle('avatars', {
+   *     rules: [
+   *       {
+   *         id: 'expire-history',
+   *         status: 'Enabled',
+   *         filter: {},
+   *         noncurrentVersionExpiration: {
+   *           noncurrentDays: 30,
+   *           newerNoncurrentVersions: 2,
+   *         },
+   *       },
+   *     ],
+   *   })
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select` and `update`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  updateBucketLifecycle(id: string, configuration: BucketLifecycleConfiguration): Promise<{
+    data: BucketLifecycleConfiguration;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Removes the lifecycle policy from a bucket.
+   *
+   * Safe to call when no policy is stored. The response is still success.
+   * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
+   * for the project.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket.
+   * @returns Promise with success message or error
+   *
+   * @example Delete lifecycle configuration
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .deleteBucketLifecycle('avatars')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "message": "Successfully deleted"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - RLS policy permissions required:
+   *   - `buckets` table permissions: `select` and `update`
+   *   - `objects` table permissions: none
+   * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+   */
+  deleteBucketLifecycle(id: string): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * Purges the CDN cache for an entire bucket.
+   *
+   * Maps to `DELETE /cdn/{bucket}` on the Storage API. The server
+   * issues a CDN invalidation for the bucket and returns `{ message: 'success' }`.
+   *
+   * **Requires the `service_role` key.** The underlying endpoint enforces
+   * `service_role` JWT — calls made with the anon key or a user JWT will be
+   * rejected by the server.
+   *
+   * **Hosted CDN feature.** On self-hosted Supabase, the Storage service must
+   * have `CDN_PURGE_ENDPOINT_URL` configured and the `purgeCache` tenant
+   * feature enabled, otherwise the server returns an error.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   * @param id The unique identifier of the bucket you would like to purge from cache.
+   * @param options Optional purge cache options.
+   * @param options.transformations If true, purges only transformations (resized/formatted variants), leaving original cached files intact.
+   * @param parameters Optional fetch parameters such as an `AbortController` signal.
+   * @returns Promise with `{ data: { message }, error: null }` on success or `{ data: null, error }` on failure.
+   *
+   * @example Purge cache for an entire bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .purgeBucketCache('avatars')
+   * ```
+   *
+   * @example Purge only transformations for an entire bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .purgeBucketCache('avatars', { transformations: true })
+   * ```
+   */
+  purgeBucketCache(id: string, options?: PurgeCacheOptions, parameters?: FetchParameters): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  private bucketLifecycleUrl;
+  private listBucketOptionsToQueryString;
 }
 //#endregion
-//#region src/index.d.ts
-declare const _default: {
-  PostgrestClient: typeof PostgrestClient;
-  PostgrestQueryBuilder: typeof PostgrestQueryBuilder;
-  PostgrestFilterBuilder: typeof PostgrestFilterBuilder;
-  PostgrestTransformBuilder: typeof PostgrestTransformBuilder;
-  PostgrestBuilder: typeof PostgrestBuilder;
-  PostgrestError: typeof PostgrestError;
-};
+//#region src/packages/StorageAnalyticsClient.d.ts
+type WrapAsyncMethod<T> = T extends ((...args: infer A) => Promise<infer R>) ? (...args: A) => Promise<{
+  data: R;
+  error: null;
+} | {
+  data: null;
+  error: IcebergError;
+}> : T;
+type WrappedIcebergRestCatalog = { [K in keyof IcebergRestCatalog]: WrapAsyncMethod<IcebergRestCatalog[K]> };
+/**
+ * Client class for managing Analytics Buckets using Iceberg tables
+ * Provides methods for creating, listing, and deleting analytics buckets
+ */
+declare class StorageAnalyticsClient extends BaseApiClient<StorageError> {
+  /**
+   * @alpha
+   *
+   * Creates a new StorageAnalyticsClient instance
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Analytics Buckets
+   * @param url - The base URL for the storage API
+   * @param headers - HTTP headers to include in requests
+   * @param fetch - Optional custom fetch implementation
+   *
+   * @example Using supabase-js (recommended)
+   * ```typescript
+   * import { createClient } from '@supabase/supabase-js'
+   *
+   * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+   * const { data, error } = await supabase.storage.analytics.listBuckets()
+   * ```
+   *
+   * @example Standalone import for bundle-sensitive environments
+   * ```typescript
+   * import { StorageAnalyticsClient } from '@supabase/storage-js'
+   *
+   * const client = new StorageAnalyticsClient(url, headers)
+   * ```
+   */
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch);
+  /**
+   * @alpha
+   *
+   * Creates a new analytics bucket using Iceberg tables
+   * Analytics buckets are optimized for analytical queries and data processing
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Analytics Buckets
+   * @param name A unique name for the bucket you are creating
+   * @returns Promise with response containing newly created analytics bucket or error
+   *
+   * @example Create analytics bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .analytics
+   *   .createBucket('analytics-data')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "name": "analytics-data",
+   *     "type": "ANALYTICS",
+   *     "format": "iceberg",
+   *     "created_at": "2024-05-22T22:26:05.100Z",
+   *     "updated_at": "2024-05-22T22:26:05.100Z"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - Creates a new analytics bucket using Iceberg tables
+   * - Analytics buckets are optimized for analytical queries and data processing
+   */
+  createBucket(name: string): Promise<{
+    data: AnalyticBucket;
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * @alpha
+   *
+   * Retrieves the details of all Analytics Storage buckets within an existing project
+   * Only returns buckets of type 'ANALYTICS'
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Analytics Buckets
+   * @param options Query parameters for listing buckets
+   * @param options.limit Maximum number of buckets to return
+   * @param options.offset Number of buckets to skip
+   * @param options.sortColumn Column to sort by ('name', 'created_at', 'updated_at')
+   * @param options.sortOrder Sort order ('asc' or 'desc')
+   * @param options.search Search term to filter bucket names
+   * @returns Promise with response containing array of analytics buckets or error
+   *
+   * @example List analytics buckets
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .analytics
+   *   .listBuckets({
+   *     limit: 10,
+   *     offset: 0,
+   *     sortColumn: 'created_at',
+   *     sortOrder: 'desc'
+   *   })
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": [
+   *     {
+   *       "name": "analytics-data",
+   *       "type": "ANALYTICS",
+   *       "format": "iceberg",
+   *       "created_at": "2024-05-22T22:26:05.100Z",
+   *       "updated_at": "2024-05-22T22:26:05.100Z"
+   *     }
+   *   ],
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - Retrieves the details of all Analytics Storage buckets within an existing project
+   * - Only returns buckets of type 'ANALYTICS'
+   */
+  listBuckets(options?: {
+    limit?: number;
+    offset?: number;
+    sortColumn?: 'name' | 'created_at' | 'updated_at';
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
+  }): Promise<{
+    data: AnalyticBucket[];
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * @alpha
+   *
+   * Deletes an existing analytics bucket
+   * A bucket can't be deleted with existing objects inside it
+   * You must first empty the bucket before deletion
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Analytics Buckets
+   * @param bucketName The unique identifier of the bucket you would like to delete
+   * @returns Promise with response containing success message or error
+   *
+   * @example Delete analytics bucket
+   * ```js
+   * const { data, error } = await supabase
+   *   .storage
+   *   .analytics
+   *   .deleteBucket('analytics-data')
+   * ```
+   *
+   * Response:
+   * ```json
+   * {
+   *   "data": {
+   *     "message": "Successfully deleted"
+   *   },
+   *   "error": null
+   * }
+   * ```
+   *
+   * @remarks
+   * - Deletes an analytics bucket
+   */
+  deleteBucket(bucketName: string): Promise<{
+    data: {
+      message: string;
+    };
+    error: null;
+  } | {
+    data: null;
+    error: StorageError;
+  }>;
+  /**
+   * @alpha
+   *
+   * Get an Iceberg REST Catalog client configured for a specific analytics bucket
+   * Use this to perform advanced table and namespace operations within the bucket
+   * The returned client provides full access to the Apache Iceberg REST Catalog API
+   * with the Supabase `{ data, error }` pattern for consistent error handling on all operations.
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Analytics Buckets
+   * @param bucketName - The name of the analytics bucket (warehouse) to connect to
+   * @returns The wrapped Iceberg catalog client
+   * @throws {StorageError} If the bucket name is invalid
+   *
+   * @example Get catalog and create table
+   * ```js
+   * // First, create an analytics bucket
+   * const { data: bucket, error: bucketError } = await supabase
+   *   .storage
+   *   .analytics
+   *   .createBucket('analytics-data')
+   *
+   * // Get the Iceberg catalog for that bucket
+   * const catalog = supabase.storage.analytics.from('analytics-data')
+   *
+   * // Create a namespace
+   * const { error: nsError } = await catalog.createNamespace({ namespace: ['default'] })
+   *
+   * // Create a table with schema
+   * const { data: tableMetadata, error: tableError } = await catalog.createTable(
+   *   { namespace: ['default'] },
+   *   {
+   *     name: 'events',
+   *     schema: {
+   *       type: 'struct',
+   *       fields: [
+   *         { id: 1, name: 'id', type: 'long', required: true },
+   *         { id: 2, name: 'timestamp', type: 'timestamp', required: true },
+   *         { id: 3, name: 'user_id', type: 'string', required: false }
+   *       ],
+   *       'schema-id': 0,
+   *       'identifier-field-ids': [1]
+   *     },
+   *     'partition-spec': {
+   *       'spec-id': 0,
+   *       fields: []
+   *     },
+   *     'write-order': {
+   *       'order-id': 0,
+   *       fields: []
+   *     },
+   *     properties: {
+   *       'write.format.default': 'parquet'
+   *     }
+   *   }
+   * )
+   * ```
+   *
+   * @example List tables in namespace
+   * ```js
+   * const catalog = supabase.storage.analytics.from('analytics-data')
+   *
+   * // List all tables in the default namespace
+   * const { data: tables, error: listError } = await catalog.listTables({ namespace: ['default'] })
+   * if (listError) {
+   *   if (listError.isNotFound()) {
+   *     console.log('Namespace not found')
+   *   }
+   *   return
+   * }
+   * console.log(tables) // [{ namespace: ['default'], name: 'events' }]
+   * ```
+   *
+   * @example Working with namespaces
+   * ```js
+   * const catalog = supabase.storage.analytics.from('analytics-data')
+   *
+   * // List all namespaces
+   * const { data: namespaces } = await catalog.listNamespaces()
+   *
+   * // Create namespace with properties
+   * await catalog.createNamespace(
+   *   { namespace: ['production'] },
+   *   { properties: { owner: 'data-team', env: 'prod' } }
+   * )
+   * ```
+   *
+   * @example Cleanup operations
+   * ```js
+   * const catalog = supabase.storage.analytics.from('analytics-data')
+   *
+   * // Drop table with purge option (removes all data)
+   * const { error: dropError } = await catalog.dropTable(
+   *   { namespace: ['default'], name: 'events' },
+   *   { purge: true }
+   * )
+   *
+   * if (dropError?.isNotFound()) {
+   *   console.log('Table does not exist')
+   * }
+   *
+   * // Drop namespace (must be empty)
+   * await catalog.dropNamespace({ namespace: ['default'] })
+   * ```
+   *
+   * @remarks
+   * This method provides a bridge between Supabase's bucket management and the standard
+   * Apache Iceberg REST Catalog API. The bucket name maps to the Iceberg warehouse parameter.
+   * All authentication and configuration is handled automatically using your Supabase credentials.
+   *
+   * **Error Handling**: Invalid bucket names throw immediately. All catalog
+   * operations return `{ data, error }` where errors are `IcebergError` instances from iceberg-js.
+   * Use helper methods like `error.isNotFound()` or check `error.status` for specific error handling.
+   * Use `.throwOnError()` on the analytics client if you prefer exceptions for catalog operations.
+   *
+   * **Cleanup Operations**: When using `dropTable`, the `purge: true` option permanently
+   * deletes all table data. Without it, the table is marked as deleted but data remains.
+   *
+   * **Library Dependency**: The returned catalog wraps `IcebergRestCatalog` from iceberg-js.
+   * For complete API documentation and advanced usage, refer to the
+   * [iceberg-js documentation](https://supabase.github.io/iceberg-js/).
+   */
+  from(bucketName: string): WrappedIcebergRestCatalog;
+}
 //#endregion
-export { PostgrestBuilder, PostgrestClient, type ClientServerOptions as PostgrestClientOptions, PostgrestError, PostgrestFilterBuilder, type PostgrestMaybeSingleResponse, type PostgrestOpenApiSpec, PostgrestQueryBuilder, type PostgrestResponse, type PostgrestResponseFailure, type PostgrestResponseSuccess, type PostgrestSingleResponse, PostgrestTransformBuilder, type GetResult as UnstableGetResult, _default as default };
+//#region src/packages/VectorIndexApi.d.ts
+/**
+ * @alpha
+ *
+ * Options for creating a vector index
+ *
+ * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+ */
+interface CreateIndexOptions {
+  vectorBucketName: string;
+  indexName: string;
+  dataType: VectorDataType;
+  dimension: number;
+  distanceMetric: DistanceMetric;
+  metadataConfiguration?: MetadataConfiguration;
+}
+/**
+ * @hidden
+ * Base implementation for vector index operations.
+ * Use {@link VectorBucketScope} via `supabase.storage.vectors.from('bucket')` instead.
+ */
+declare class VectorIndexApi extends BaseApiClient<StorageError> {
+  /** Creates a new VectorIndexApi instance */
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch);
+  /** Creates a new vector index within a bucket */
+  createIndex(options: CreateIndexOptions): Promise<ApiResponse<undefined>>;
+  /** Retrieves metadata for a specific vector index */
+  getIndex(vectorBucketName: string, indexName: string): Promise<ApiResponse<{
+    index: VectorIndex;
+  }>>;
+  /** Lists vector indexes within a bucket with optional filtering and pagination */
+  listIndexes(options: ListIndexesOptions): Promise<ApiResponse<ListIndexesResponse>>;
+  /** Deletes a vector index and all its data */
+  deleteIndex(vectorBucketName: string, indexName: string): Promise<ApiResponse<undefined>>;
+}
+//#endregion
+//#region src/packages/VectorDataApi.d.ts
+/**
+ * @hidden
+ * Base implementation for vector data operations.
+ * Use {@link VectorIndexScope} via `supabase.storage.vectors.from('bucket').index('idx')` instead.
+ */
+declare class VectorDataApi extends BaseApiClient<StorageError> {
+  /** Creates a new VectorDataApi instance */
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch);
+  /** Inserts or updates vectors in batch (1-500 per request) */
+  putVectors(options: PutVectorsOptions): Promise<ApiResponse<undefined>>;
+  /** Retrieves vectors by their keys in batch */
+  getVectors(options: GetVectorsOptions): Promise<ApiResponse<GetVectorsResponse>>;
+  /** Lists vectors in an index with pagination */
+  listVectors(options: ListVectorsOptions): Promise<ApiResponse<ListVectorsResponse>>;
+  /** Queries for similar vectors using approximate nearest neighbor search */
+  queryVectors(options: QueryVectorsOptions): Promise<ApiResponse<QueryVectorsResponse>>;
+  /** Deletes vectors by their keys in batch (1-500 per request) */
+  deleteVectors(options: DeleteVectorsOptions): Promise<ApiResponse<undefined>>;
+}
+//#endregion
+//#region src/packages/VectorBucketApi.d.ts
+/**
+ * @hidden
+ * Base implementation for vector bucket operations.
+ * Use {@link StorageVectorsClient} via `supabase.storage.vectors` instead.
+ */
+declare class VectorBucketApi extends BaseApiClient<StorageError> {
+  /** Creates a new VectorBucketApi instance */
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch);
+  /** Creates a new vector bucket */
+  createBucket(vectorBucketName: string): Promise<ApiResponse<undefined>>;
+  /** Retrieves metadata for a specific vector bucket */
+  getBucket(vectorBucketName: string): Promise<ApiResponse<{
+    vectorBucket: VectorBucket;
+  }>>;
+  /** Lists vector buckets with optional filtering and pagination */
+  listBuckets(options?: ListVectorBucketsOptions): Promise<ApiResponse<ListVectorBucketsResponse>>;
+  /** Deletes a vector bucket (must be empty first) */
+  deleteBucket(vectorBucketName: string): Promise<ApiResponse<undefined>>;
+}
+//#endregion
+//#region src/packages/StorageVectorsClient.d.ts
+/**
+ *
+ * @alpha
+ *
+ * Configuration options for the Storage Vectors client
+ *
+ * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+ */
+interface StorageVectorsClientOptions {
+  /**
+   * Custom headers to include in all requests
+   */
+  headers?: {
+    [key: string]: string;
+  };
+  /**
+   * Custom fetch implementation (optional)
+   * Useful for testing or custom request handling
+   */
+  fetch?: Fetch;
+}
+/**
+ *
+ * @alpha
+ *
+ * Main client for interacting with S3 Vectors API
+ * Provides access to bucket, index, and vector data operations
+ *
+ * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+ *
+ * **Usage Patterns:**
+ *
+ * ```typescript
+ * const { data, error } = await supabase
+ *  .storage
+ *  .vectors
+ *  .createBucket('embeddings-prod')
+ *
+ * // Access index operations via buckets
+ * const bucket = supabase.storage.vectors.from('embeddings-prod')
+ * await bucket.createIndex({
+ *   indexName: 'documents',
+ *   dataType: 'float32',
+ *   dimension: 1536,
+ *   distanceMetric: 'cosine'
+ * })
+ *
+ * // Access vector operations via index
+ * const index = bucket.index('documents')
+ * await index.putVectors({
+ *   vectors: [
+ *     { key: 'doc-1', data: { float32: [...] }, metadata: { title: 'Intro' } }
+ *   ]
+ * })
+ *
+ * // Query similar vectors
+ * const { data } = await index.queryVectors({
+ *   queryVector: { float32: [...] },
+ *   topK: 5,
+ *   returnDistance: true
+ * })
+ * ```
+ */
+declare class StorageVectorsClient extends VectorBucketApi {
+  /**
+   * @alpha
+   *
+   * Creates a StorageVectorsClient that can manage buckets, indexes, and vectors.
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param url - Base URL of the Storage Vectors REST API.
+   * @param options.headers - Optional headers (for example `Authorization`) applied to every request.
+   * @param options.fetch - Optional custom `fetch` implementation for non-browser runtimes.
+   *
+   * @example Using supabase-js (recommended)
+   * ```typescript
+   * import { createClient } from '@supabase/supabase-js'
+   *
+   * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * ```
+   *
+   * @example Standalone import for bundle-sensitive environments
+   * ```typescript
+   * import { StorageVectorsClient } from '@supabase/storage-js'
+   *
+   * const client = new StorageVectorsClient(url, options)
+   * ```
+   */
+  constructor(url: string, options?: StorageVectorsClientOptions);
+  /**
+   *
+   * @alpha
+   *
+   * Access operations for a specific vector bucket
+   * Returns a scoped client for index and vector operations within the bucket
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param vectorBucketName - Name of the vector bucket
+   * @returns Bucket-scoped client with index and vector operations
+   *
+   * @example Accessing a vector bucket
+   * ```typescript
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * ```
+   */
+  from(vectorBucketName: string): VectorBucketScope;
+  /**
+   *
+   * @alpha
+   *
+   * Creates a new vector bucket
+   * Vector buckets are containers for vector indexes and their data
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param vectorBucketName - Unique name for the vector bucket
+   * @returns Promise with empty response on success or error
+   *
+   * @example Creating a vector bucket
+   * ```typescript
+   * const { data, error } = await supabase
+   *   .storage
+   *   .vectors
+   *   .createBucket('embeddings-prod')
+   * ```
+   */
+  createBucket(vectorBucketName: string): Promise<ApiResponse<undefined>>;
+  /**
+   *
+   * @alpha
+   *
+   * Retrieves metadata for a specific vector bucket
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param vectorBucketName - Name of the vector bucket
+   * @returns Promise with bucket metadata or error
+   *
+   * @example Get bucket metadata
+   * ```typescript
+   * const { data, error } = await supabase
+   *   .storage
+   *   .vectors
+   *   .getBucket('embeddings-prod')
+   *
+   * console.log('Bucket created:', data?.vectorBucket.creationTime)
+   * ```
+   */
+  getBucket(vectorBucketName: string): Promise<ApiResponse<{
+    vectorBucket: VectorBucket;
+  }>>;
+  /**
+   *
+   * @alpha
+   *
+   * Lists all vector buckets with optional filtering and pagination
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Optional filters (prefix, maxResults, nextToken)
+   * @returns Promise with list of buckets or error
+   *
+   * @example List vector buckets
+   * ```typescript
+   * const { data, error } = await supabase
+   *   .storage
+   *   .vectors
+   *   .listBuckets({ prefix: 'embeddings-' })
+   *
+   * data?.vectorBuckets.forEach(bucket => {
+   *   console.log(bucket.vectorBucketName)
+   * })
+   * ```
+   */
+  listBuckets(options?: ListVectorBucketsOptions): Promise<ApiResponse<ListVectorBucketsResponse>>;
+  /**
+   *
+   * @alpha
+   *
+   * Deletes a vector bucket (bucket must be empty)
+   * All indexes must be deleted before deleting the bucket
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param vectorBucketName - Name of the vector bucket to delete
+   * @returns Promise with empty response on success or error
+   *
+   * @example Delete a vector bucket
+   * ```typescript
+   * const { data, error } = await supabase
+   *   .storage
+   *   .vectors
+   *   .deleteBucket('embeddings-old')
+   * ```
+   */
+  deleteBucket(vectorBucketName: string): Promise<ApiResponse<undefined>>;
+}
+/**
+ *
+ * @alpha
+ *
+ * Scoped client for operations within a specific vector bucket
+ * Provides index management and access to vector operations
+ *
+ * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+ */
+declare class VectorBucketScope extends VectorIndexApi {
+  private vectorBucketName;
+  /**
+   * @alpha
+   *
+   * Creates a helper that automatically scopes all index operations to the provided bucket.
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @example Creating a vector bucket scope
+   * ```typescript
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * ```
+   */
+  constructor(url: string, headers: {
+    [key: string]: string;
+  }, vectorBucketName: string, fetch?: Fetch);
+  /**
+   *
+   * @alpha
+   *
+   * Creates a new vector index in this bucket
+   * Convenience method that automatically includes the bucket name
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Index configuration (vectorBucketName is automatically set)
+   * @returns Promise with empty response on success or error
+   *
+   * @example Creating a vector index
+   * ```typescript
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * await bucket.createIndex({
+   *   indexName: 'documents-openai',
+   *   dataType: 'float32',
+   *   dimension: 1536,
+   *   distanceMetric: 'cosine',
+   *   metadataConfiguration: {
+   *     nonFilterableMetadataKeys: ['raw_text']
+   *   }
+   * })
+   * ```
+   */
+  createIndex(options: Omit<CreateIndexOptions, 'vectorBucketName'>): Promise<ApiResponse<undefined>>;
+  /**
+   *
+   * @alpha
+   *
+   * Lists indexes in this bucket
+   * Convenience method that automatically includes the bucket name
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Listing options (vectorBucketName is automatically set)
+   * @returns Promise with response containing indexes array and pagination token or error
+   *
+   * @example List indexes
+   * ```typescript
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * const { data } = await bucket.listIndexes({ prefix: 'documents-' })
+   * ```
+   */
+  listIndexes(options?: Omit<ListIndexesOptions, 'vectorBucketName'>): Promise<ApiResponse<ListIndexesResponse>>;
+  /**
+   *
+   * @alpha
+   *
+   * Retrieves metadata for a specific index in this bucket
+   * Convenience method that automatically includes the bucket name
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param indexName - Name of the index to retrieve
+   * @returns Promise with index metadata or error
+   *
+   * @example Get index metadata
+   * ```typescript
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * const { data } = await bucket.getIndex('documents-openai')
+   * console.log('Dimension:', data?.index.dimension)
+   * ```
+   */
+  getIndex(indexName: string): Promise<ApiResponse<{
+    index: VectorIndex;
+  }>>;
+  /**
+   *
+   * @alpha
+   *
+   * Deletes an index from this bucket
+   * Convenience method that automatically includes the bucket name
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param indexName - Name of the index to delete
+   * @returns Promise with empty response on success or error
+   *
+   * @example Delete an index
+   * ```typescript
+   * const bucket = supabase.storage.vectors.from('embeddings-prod')
+   * await bucket.deleteIndex('old-index')
+   * ```
+   */
+  deleteIndex(indexName: string): Promise<ApiResponse<undefined>>;
+  /**
+   *
+   * @alpha
+   *
+   * Access operations for a specific index within this bucket
+   * Returns a scoped client for vector data operations
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param indexName - Name of the index
+   * @returns Index-scoped client with vector data operations
+   *
+   * @example Accessing an index
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   *
+   * // Insert vectors
+   * await index.putVectors({
+   *   vectors: [
+   *     { key: 'doc-1', data: { float32: [...] }, metadata: { title: 'Intro' } }
+   *   ]
+   * })
+   *
+   * // Query similar vectors
+   * const { data } = await index.queryVectors({
+   *   queryVector: { float32: [...] },
+   *   topK: 5
+   * })
+   * ```
+   */
+  index(indexName: string): VectorIndexScope;
+}
+/**
+ *
+ * @alpha
+ *
+ * Scoped client for operations within a specific vector index
+ * Provides vector data operations (put, get, list, query, delete)
+ *
+ * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+ */
+declare class VectorIndexScope extends VectorDataApi {
+  private vectorBucketName;
+  private indexName;
+  /**
+   *
+   * @alpha
+   *
+   * Creates a helper that automatically scopes all vector operations to the provided bucket/index names.
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @example Creating a vector index scope
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   * ```
+   */
+  constructor(url: string, headers: {
+    [key: string]: string;
+  }, vectorBucketName: string, indexName: string, fetch?: Fetch);
+  /**
+   *
+   * @alpha
+   *
+   * Inserts or updates vectors in this index
+   * Convenience method that automatically includes bucket and index names
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Vector insertion options (bucket and index names automatically set)
+   * @returns Promise with empty response on success or error
+   *
+   * @example Insert vectors into an index
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   * await index.putVectors({
+   *   vectors: [
+   *     {
+   *       key: 'doc-1',
+   *       data: { float32: [0.1, 0.2, ...] },
+   *       metadata: { title: 'Introduction', page: 1 }
+   *     }
+   *   ]
+   * })
+   * ```
+   */
+  putVectors(options: Omit<PutVectorsOptions, 'vectorBucketName' | 'indexName'>): Promise<ApiResponse<undefined>>;
+  /**
+   *
+   * @alpha
+   *
+   * Retrieves vectors by keys from this index
+   * Convenience method that automatically includes bucket and index names
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Vector retrieval options (bucket and index names automatically set)
+   * @returns Promise with response containing vectors array or error
+   *
+   * @example Get vectors by keys
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   * const { data } = await index.getVectors({
+   *   keys: ['doc-1', 'doc-2'],
+   *   returnMetadata: true
+   * })
+   * ```
+   */
+  getVectors(options: Omit<GetVectorsOptions, 'vectorBucketName' | 'indexName'>): Promise<ApiResponse<GetVectorsResponse>>;
+  /**
+   *
+   * @alpha
+   *
+   * Lists vectors in this index with pagination
+   * Convenience method that automatically includes bucket and index names
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Listing options (bucket and index names automatically set)
+   * @returns Promise with response containing vectors array and pagination token or error
+   *
+   * @example List vectors with pagination
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   * const { data } = await index.listVectors({
+   *   maxResults: 500,
+   *   returnMetadata: true
+   * })
+   * ```
+   */
+  listVectors(options?: Omit<ListVectorsOptions, 'vectorBucketName' | 'indexName'>): Promise<ApiResponse<ListVectorsResponse>>;
+  /**
+   *
+   * @alpha
+   *
+   * Queries for similar vectors in this index
+   * Convenience method that automatically includes bucket and index names
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Query options (bucket and index names automatically set)
+   * @returns Promise with response containing vectors ordered by distance, an optional pagination token, or an error
+   *
+   * @example Query similar vectors
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   * const { data } = await index.queryVectors({
+   *   queryVector: { float32: [0.1, 0.2, ...] },
+   *   topK: 5,
+   *   filter: { category: 'technical' },
+   *   returnDistance: true,
+   *   returnMetadata: true
+   * })
+   * ```
+   */
+  queryVectors(options: Omit<QueryVectorsOptions, 'vectorBucketName' | 'indexName'>): Promise<ApiResponse<QueryVectorsResponse>>;
+  /**
+   *
+   * @alpha
+   *
+   * Deletes vectors by keys from this index
+   * Convenience method that automatically includes bucket and index names
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   * @param options - Deletion options (bucket and index names automatically set)
+   * @returns Promise with empty response on success or error
+   *
+   * @example Delete vectors by keys
+   * ```typescript
+   * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+   * await index.deleteVectors({
+   *   keys: ['doc-1', 'doc-2', 'doc-3']
+   * })
+   * ```
+   */
+  deleteVectors(options: Omit<DeleteVectorsOptions, 'vectorBucketName' | 'indexName'>): Promise<ApiResponse<undefined>>;
+}
+//#endregion
+//#region src/StorageClient.d.ts
+interface StorageClientOptions {
+  useNewHostname?: boolean;
+}
+declare class StorageClient extends StorageBucketApi {
+  /**
+   * Creates a client for Storage buckets, files, analytics, and vectors.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   *
+   * @example Using supabase-js (recommended)
+   * ```ts
+   * import { createClient } from '@supabase/supabase-js'
+   *
+   * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+   * const avatars = supabase.storage.from('avatars')
+   * ```
+   *
+   * @example Standalone import for bundle-sensitive environments
+   * ```ts
+   * import { StorageClient } from '@supabase/storage-js'
+   *
+   * const storage = new StorageClient('https://xyzcompany.supabase.co/storage/v1', {
+   *   apikey: 'your-publishable-key',
+   * })
+   * const avatars = storage.from('avatars')
+   * ```
+   */
+  constructor(url: string, headers?: {
+    [key: string]: string;
+  }, fetch?: Fetch, opts?: StorageClientOptions);
+  /**
+   * Perform file operation in a bucket.
+   *
+   * @category Storage
+   * @subcategory File Buckets
+   *
+   * @param id The bucket id to operate on.
+   *
+   * @example Accessing a bucket
+   * ```typescript
+   * const avatars = supabase.storage.from('avatars')
+   * ```
+   */
+  from(id: string): StorageFileApi;
+  /**
+   *
+   * @alpha
+   *
+   * Access vector storage operations.
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Vector Buckets
+   *
+   * @returns A StorageVectorsClient instance configured with the current storage settings.
+   */
+  get vectors(): StorageVectorsClient;
+  /**
+   *
+   * @alpha
+   *
+   * Access analytics storage operations using Iceberg tables.
+   *
+   * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+   *
+   * @category Storage
+   * @subcategory Analytics Buckets
+   *
+   * @returns A StorageAnalyticsClient instance configured with the current storage settings.
+   */
+  get analytics(): StorageAnalyticsClient;
+}
+//#endregion
+export { AnalyticBucket, ApiResponse, Bucket, BucketLifecycleConfiguration, BucketType, Camelize, type CreateIndexOptions, CreateSettableVersioningStatus, DeleteObjectEntry, DeleteVectorsOptions, DestinationOptions, DistanceMetric, DownloadResult, EncryptionConfiguration, ErrorNamespace, ErrorResponse, FetchParameters, FileMetadata, FileObject, FileObjectV2, FileOptions, GetVectorsOptions, GetVectorsResponse, LifecycleRule, LifecycleRuleFilter, LifecycleRuleStatus, ListBucketOptions, ListIndexesOptions, ListIndexesResponse, ListVectorBucketsOptions, ListVectorBucketsResponse, ListVectorsOptions, ListVectorsResponse, Metadata, MetadataConfiguration, NoncurrentVersionExpiration, PurgeCacheOptions, PutVectorsOptions, QueryVectorsOptions, QueryVectorsResponse, SearchOptions, SearchV2Folder, SearchV2Object, SearchV2Options, SearchV2Result, SortBy, SortByV2, StorageAnalyticsClient, StorageApiError, StorageClient, type StorageClientOptions, StorageError, StorageUnknownError, StorageVectorsApiError, StorageVectorsClient, type StorageVectorsClientOptions, StorageVectorsError, StorageVectorsErrorCode, StorageVectorsUnknownError, SuccessResponse, TransformOptions, UpdateSettableVersioningStatus, VectorBucket, VectorBucketApi, VectorBucketScope, VectorData, VectorDataApi, VectorDataType, VectorFetchParameters, VectorFilter, VectorIndex, VectorIndexApi, VectorIndexScope, VectorMatch, VectorMetadata, VectorObject, VersioningStatus, isStorageError, isStorageVectorsError };
 //# sourceMappingURL=index.d.mts.map
