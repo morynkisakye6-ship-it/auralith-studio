@@ -1,58 +1,71 @@
 import { version } from './version'
+import type {
+  SocketState,
+  ChannelState,
+  ChannelEvent as PhoenixChannelEvent,
+  Transport,
+  Vsn,
+} from '../phoenix/types'
 
-/** Current session will be checked for refresh at this interval. */
-export const AUTO_REFRESH_TICK_DURATION_MS = 30 * 1000
+export type { SocketState, ChannelState, Transport }
 
-/**
- * A token refresh will be attempted this many ticks before the current session expires. */
-export const AUTO_REFRESH_TICK_THRESHOLD = 3
+export const DEFAULT_VERSION = `realtime-js/${version}`
 
-/*
- * Earliest time before an access token expires that the session should be refreshed.
- */
-export const EXPIRY_MARGIN_MS = AUTO_REFRESH_TICK_THRESHOLD * AUTO_REFRESH_TICK_DURATION_MS
+export const VSN_1_0_0: Vsn = '1.0.0'
+export const VSN_2_0_0: Vsn = '2.0.0'
+export const DEFAULT_VSN: Vsn = VSN_2_0_0
 
-/**
- * After a refresh fails, serial callers (including the next auto-refresh
- * tick) within this window receive the cached failure instead of firing
- * another /token request. Two ticks: each outage burns at most one /token
- * call per cooldown window. Cleared on any successful refresh (locally or
- * via BroadcastChannel from another tab) and on `_removeSession`.
- */
-export const REFRESH_FAILURE_COOLDOWN_MS = 2 * AUTO_REFRESH_TICK_DURATION_MS
+export const VERSION = version
 
-export const GOTRUE_URL = 'http://localhost:9999'
-export const STORAGE_KEY = 'supabase.auth.token'
-export const AUDIENCE = ''
-export const DEFAULT_HEADERS = { 'X-Client-Info': `gotrue-js/${version}` }
-export const NETWORK_FAILURE = {
-  MAX_RETRIES: 10,
-  RETRY_INTERVAL: 2, // in deciseconds
-}
+export const DEFAULT_TIMEOUT = 10000
 
-export const API_VERSION_HEADER_NAME = 'X-Supabase-Api-Version'
-export const API_VERSIONS = {
-  '2024-01-01': {
-    timestamp: Date.parse('2024-01-01T00:00:00.0Z'),
-    name: '2024-01-01',
-  },
-}
-
-export const BASE64URL_REGEX = /^([a-z0-9_-]{4})*($|[a-z0-9_-]{3}$|[a-z0-9_-]{2}$)$/i
+/** Mirrors the Realtime server's own default for `postgres_changes_options.timeout`. */
+export const DEFAULT_POSTGRES_CHANGES_WAIT_TIMEOUT = 15000
 
 /**
- * Reserved query parameter appended to `redirectTo` URLs (behind
- * `experimental.appendPkceFlowIdToRedirects`) that correlates a PKCE callback
- * with the code verifier stored when its flow started. It round-trips through
- * the auth server untouched and identifies a verifier slot in storage — the
- * verifier itself never appears in a URL.
+ * Headroom added to the join timeout when waiting on postgres_changes, covering the
+ * CHANNEL_ERROR_BACKOFF_MS sleep (5s by default) the server takes before rejecting a join.
  */
-export const PKCE_FLOW_ID_PARAM = 'sb_flow_id'
+export const POSTGRES_CHANGES_WAIT_ERROR_GRACE = 10000
 
-/**
- * Maximum number of PKCE code verifiers kept in storage at once. Starting a
- * new flow beyond this evicts the oldest pending verifier.
- */
-export const PKCE_MAX_CONCURRENT_FLOWS = 5
+export const WS_CLOSE_NORMAL = 1000
+export const MAX_PUSH_BUFFER_SIZE = 100
 
-export const JWKS_TTL = 10 * 60 * 1000 // 10 minutes
+export const SOCKET_STATES = {
+  connecting: 0,
+  open: 1,
+  closing: 2,
+  closed: 3,
+} as const
+
+export const CHANNEL_STATES = {
+  closed: 'closed',
+  errored: 'errored',
+  joined: 'joined',
+  joining: 'joining',
+  leaving: 'leaving',
+} as const
+
+export type ChannelEvent = PhoenixChannelEvent | 'access_token'
+
+export const CHANNEL_EVENTS = {
+  close: 'phx_close',
+  error: 'phx_error',
+  join: 'phx_join',
+  reply: 'phx_reply',
+  leave: 'phx_leave',
+  access_token: 'access_token',
+} as const
+
+export const TRANSPORTS = {
+  websocket: 'websocket',
+} as const
+
+export type ConnectionState = 'connecting' | 'open' | 'closing' | 'closed' | (string & {})
+
+export const CONNECTION_STATE = {
+  connecting: 'connecting',
+  open: 'open',
+  closing: 'closing',
+  closed: 'closed',
+} as const

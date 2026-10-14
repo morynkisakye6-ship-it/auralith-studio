@@ -1,6 +1,6 @@
-# Agent instructions for `@supabase/postgrest-js`
+# Agent instructions for `@supabase/realtime-js`
 
-Isomorphic PostgREST client for database operations (select, insert, update, upsert, delete, filters, RPC).
+Listen to realtime updates from a Supabase PostgreSQL database. Handles channels, presence, broadcast, and Postgres CDC subscriptions.
 
 When helping a user work with this package:
 
