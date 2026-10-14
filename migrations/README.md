@@ -1,14 +1,14 @@
-# Migration notes for `@supabase/storage-js`
+# Migration notes for `@supabase/supabase-js`
 
-Each file in this directory describes one migration theme — what changed in `@supabase/storage-js`, who is affected, and what callers need to do.
+Each file in this directory describes one migration theme — what changed in `@supabase/supabase-js`, who is affected, and what callers need to do.
 
-Files are shipped with the npm package, so the migration notes you see here are pinned to the version of `@supabase/storage-js` you have installed. Upgrading the package brings the relevant migration notes along with it.
+Files are shipped with the npm package, so the migration notes you see here are pinned to the version of `@supabase/supabase-js` you have installed. Upgrading the package brings the relevant migration notes along with it.
 
 ## How agents should use this directory
 
-When helping a developer upgrade `@supabase/storage-js`:
+When helping a developer upgrade `@supabase/supabase-js`:
 
-1. Read the migration files in `node_modules/@supabase/storage-js/migrations/` for the version they have installed.
+1. Read the migration files in `node_modules/@supabase/supabase-js/migrations/` for the version they have installed.
 2. Cross-reference against the version they are upgrading to.
 3. Apply the migration steps described in each relevant file.
 
@@ -22,4 +22,4 @@ One file per migration theme, named by topic rather than version (e.g. `<theme>.
 
 ## Cross-cutting migration notes
 
-Migrations that span multiple Supabase packages (e.g. Node.js version drops, monorepo restructures) live in [`docs/MIGRATION.md`](../../../../docs/MIGRATION.md) at the repository root, not here. This directory is scoped to `@supabase/storage-js` only.
+Migrations that span multiple Supabase packages (e.g. Node.js version drops, monorepo restructures) live in [`docs/MIGRATION.md`](../../../../docs/MIGRATION.md) at the repository root, not here. This directory is scoped to `@supabase/supabase-js` only.

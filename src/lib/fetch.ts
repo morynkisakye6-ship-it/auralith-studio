@@ -1,329 +1,206 @@
-import { API_VERSIONS, API_VERSION_HEADER_NAME } from './constants'
-import { expiresAt, looksLikeFetchResponse, parseResponseAPIVersion } from './helpers'
 import {
-  AuthResponse,
-  AuthResponsePassword,
-  Session,
-  SSOResponse,
-  GenerateLinkProperties,
-  GenerateLinkResponse,
-  User,
-  UserResponse,
-  WeakPassword,
-} from './types'
-import {
-  AuthApiError,
-  AuthRetryableFetchError,
-  AuthWeakPasswordError,
-  AuthUnknownError,
-  AuthSessionMissingError,
-} from './errors'
+  parseTraceParent,
+  shouldPropagateToTarget,
+  getDefaultPropagationTargets,
+  type TraceContext,
+  type TracePropagationTarget,
+} from '@supabase/tracing'
+import { getTraceContextExtractor } from './tracingRegistry'
+import type { TracePropagationOptions } from './types'
 
-export type Fetch = typeof fetch
+type Fetch = typeof fetch
 
-/** Raw session data from GoTrue server response. */
-interface GoTrueSessionData {
-  access_token?: string
-  refresh_token?: string
-  expires_in?: number
-  expires_at?: number
-  user?: User
-  [key: string]: any // server returns additional fields (token_type, provider_token, etc.) copied into Session
+export const resolveFetch = (customFetch?: Fetch): Fetch => {
+  if (customFetch) {
+    return (...args: Parameters<Fetch>) => customFetch(...args)
+  }
+  return (...args: Parameters<Fetch>) => fetch(...args)
 }
 
-/** Raw session data that includes weak password info (password sign-in endpoints). */
-interface GoTrueSessionPasswordData extends GoTrueSessionData {
-  weak_password?: WeakPassword
-}
-
-/** Raw user data — either `{ user: User }` or the User object itself. */
-interface GoTrueUserData {
-  user?: User
-  [key: string]: any // data may BE the User directly (fallback path)
-}
-
-/** Raw generate-link data — link properties + User fields flattened into one object. */
-type GoTrueGenerateLinkData = GenerateLinkProperties & Record<string, any>
-
-export interface FetchOptions {
-  headers?: {
-    [key: string]: string
-  }
-  noResolveJson?: boolean
-}
-
-export interface FetchParameters {
-  signal?: AbortSignal
-}
-
-export type RequestMethodType = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-
-const _getErrorMessage = (err: unknown): string => {
-  if (typeof err === 'object' && err !== null) {
-    const e = err as Record<string, unknown>
-    if (typeof e.msg === 'string') return e.msg
-    if (typeof e.message === 'string') return e.message
-    if (typeof e.error_description === 'string') return e.error_description
-    if (typeof e.error === 'string') return e.error
-  }
-  return JSON.stringify(err)
-}
-
-// 500, 501, 502, 503, 504: Standard server/gateway errors
-// 520-529, 530: Cloudflare-specific error codes (web server down, connection timed out, etc.)
-// These are infrastructure errors and should not cause session invalidation.
-const NETWORK_ERROR_CODES = [
-  500, 501, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529, 530,
-]
-
-export async function handleError(error: unknown) {
-  if (!looksLikeFetchResponse(error)) {
-    throw new AuthRetryableFetchError(_getErrorMessage(error), 0)
-  }
-
-  let data: any
-  try {
-    data = await error.json()
-  } catch (e) {
-    if (NETWORK_ERROR_CODES.includes(error.status)) {
-      // statusText can be empty — HTTP/2 has no reason phrase
-      throw new AuthRetryableFetchError(error.statusText || `HTTP ${error.status}`, error.status)
-    }
-    throw new AuthUnknownError(_getErrorMessage(e), e)
-  }
-
-  if (NETWORK_ERROR_CODES.includes(error.status)) {
-    // status in 500...599 range - server had an error, request might be retryed.
-    throw new AuthRetryableFetchError(_getErrorMessage(data), error.status)
-  }
-
-  let errorCode: string | undefined = undefined
-
-  const responseAPIVersion = parseResponseAPIVersion(error)
-  if (
-    responseAPIVersion &&
-    responseAPIVersion.getTime() >= API_VERSIONS['2024-01-01'].timestamp &&
-    typeof data === 'object' &&
-    data &&
-    typeof data.code === 'string'
-  ) {
-    errorCode = data.code
-  } else if (typeof data === 'object' && data && typeof data.error_code === 'string') {
-    errorCode = data.error_code
-  }
-
-  if (!errorCode) {
-    // Legacy support for weak password errors, when there were no error codes
-    if (
-      typeof data === 'object' &&
-      data &&
-      typeof data.weak_password === 'object' &&
-      data.weak_password &&
-      Array.isArray(data.weak_password.reasons) &&
-      data.weak_password.reasons.length &&
-      data.weak_password.reasons.reduce((a: boolean, i: any) => a && typeof i === 'string', true)
-    ) {
-      throw new AuthWeakPasswordError(
-        _getErrorMessage(data),
-        error.status,
-        data.weak_password.reasons
-      )
-    }
-  } else if (errorCode === 'weak_password') {
-    throw new AuthWeakPasswordError(
-      _getErrorMessage(data),
-      error.status,
-      data.weak_password?.reasons || []
-    )
-  } else if (errorCode === 'session_not_found') {
-    // The `session_id` inside the JWT does not correspond to a row in the
-    // `sessions` table. This usually means the user has signed out, has been
-    // deleted, or their session has somehow been terminated.
-    throw new AuthSessionMissingError()
-  }
-
-  throw new AuthApiError(_getErrorMessage(data), error.status || 500, errorCode)
-}
-
-const _getRequestParams = (
-  method: RequestMethodType,
-  options?: FetchOptions,
-  parameters?: FetchParameters,
-  body?: object
-) => {
-  const params: { [k: string]: any } = { method, headers: options?.headers || {} }
-
-  if (method === 'GET') {
-    return params
-  }
-
-  params.headers = { 'Content-Type': 'application/json;charset=UTF-8', ...options?.headers }
-  params.body = JSON.stringify(body)
-  return { ...params, ...parameters }
-}
-
-interface GotrueRequestOptions extends FetchOptions {
-  jwt?: string
-  redirectTo?: string
-  body?: object
-  query?: { [key: string]: string }
-  /**
-   * Function that transforms api response from gotrue into a desirable / standardised format
-   */
-  xform?: (data: any) => any
-}
-
-export async function _request(
-  fetcher: Fetch,
-  method: RequestMethodType,
-  url: string,
-  options?: GotrueRequestOptions
-) {
-  const headers = {
-    ...options?.headers,
-  }
-
-  if (!headers[API_VERSION_HEADER_NAME]) {
-    headers[API_VERSION_HEADER_NAME] = API_VERSIONS['2024-01-01'].name
-  }
-
-  if (options?.jwt) {
-    headers['Authorization'] = `Bearer ${options.jwt}`
-  }
-
-  const qs = options?.query ?? {}
-  if (options?.redirectTo) {
-    qs['redirect_to'] = options.redirectTo
-  }
-
-  const queryString = Object.keys(qs).length ? '?' + new URLSearchParams(qs).toString() : ''
-  const data = await _handleRequest(
-    fetcher,
-    method,
-    url + queryString,
-    {
-      headers,
-      noResolveJson: options?.noResolveJson,
-    },
-    {},
-    options?.body
-  )
-  return options?.xform ? options?.xform(data) : { data: { ...data }, error: null }
-}
-
-async function _handleRequest(
-  fetcher: Fetch,
-  method: RequestMethodType,
-  url: string,
-  options?: FetchOptions,
-  parameters?: FetchParameters,
-  body?: object
-): Promise<any> {
-  const requestParams = _getRequestParams(method, options, parameters, body)
-
-  let result: Response
-
-  try {
-    result = await fetcher(url, {
-      ...requestParams,
-    })
-  } catch (e) {
-    // fetch failed (network / CORS / aborted request) — surfaced to the
-    // caller as a retryable error below. Deliberately not logged here: an
-    // aborted in-flight request (e.g. a superseded page navigation) is a
-    // transient condition, and logging the raw error pollutes the console.
-    throw new AuthRetryableFetchError(_getErrorMessage(e), 0)
-  }
-
-  if (!result.ok) {
-    await handleError(result)
-  }
-
-  if (options?.noResolveJson) {
-    return result
-  }
-
-  try {
-    return await result.json()
-  } catch (e) {
-    await handleError(e)
-  }
-}
-
-export function _sessionResponse(data: GoTrueSessionData): AuthResponse {
-  let session = null
-  if (hasSession(data)) {
-    session = { ...data } as Session
-
-    if (!data.expires_at) {
-      session.expires_at = expiresAt(data.expires_in!)
-    }
-  }
-
-  // Some /verify responses (e.g. secure email_change first-confirmation) return
-  // only `{ msg, code }` with no user and no session. Treat those as null user.
-  const user: User | null = data.user ?? (typeof data?.id === 'string' ? (data as User) : null)
-  return { data: { session, user }, error: null }
-}
-
-export function _sessionResponsePassword(data: GoTrueSessionPasswordData): AuthResponsePassword {
-  const response = _sessionResponse(data) as AuthResponsePassword
-
-  if (
-    !response.error &&
-    data.weak_password &&
-    typeof data.weak_password === 'object' &&
-    Array.isArray(data.weak_password.reasons) &&
-    data.weak_password.reasons.length &&
-    data.weak_password.message &&
-    typeof data.weak_password.message === 'string' &&
-    data.weak_password.reasons.reduce((a: boolean, i: unknown) => a && typeof i === 'string', true)
-  ) {
-    response.data.weak_password = data.weak_password
-  }
-
-  return response
-}
-
-export function _userResponse(data: GoTrueUserData): UserResponse {
-  const user: User = data.user ?? (data as User)
-  return { data: { user }, error: null }
-}
-
-export function _ssoResponse(data: Record<string, any>): SSOResponse {
-  return { data, error: null } as SSOResponse
-}
-
-export function _generateLinkResponse(data: GoTrueGenerateLinkData): GenerateLinkResponse {
-  const { action_link, email_otp, hashed_token, redirect_to, verification_type, ...rest } = data
-
-  const properties: GenerateLinkProperties = {
-    action_link,
-    email_otp,
-    hashed_token,
-    redirect_to,
-    verification_type,
-  }
-
-  const user = { ...rest } as User
-  return {
-    data: {
-      properties,
-      user,
-    },
-    error: null,
-  }
-}
-
-export function _noResolveJsonResponse(data: Response): Response {
-  return data
+export const resolveHeadersConstructor = () => {
+  return Headers
 }
 
 /**
- * hasSession checks if the response object contains a valid session
- * @param data A response object
- * @returns true if a session is in the response
+ * New-format Supabase API keys (`sb_publishable_…` / `sb_secret_…`) are not JWTs and
+ * must never be sent as a Bearer token — they belong only in the `apikey` header.
+ * All other keys (legacy JWT keys, `sb_temp_…` temporary keys, unrecognized `sb_`
+ * subtypes) keep the Bearer fallback.
  */
-function hasSession(data: GoTrueSessionData): boolean {
-  return !!data.access_token && !!data.refresh_token && !!data.expires_in
+const isNewApiKey = (key: string): boolean =>
+  key.startsWith('sb_publishable_') || key.startsWith('sb_secret_')
+
+const TEMP_KEY_PREFIX = 'sb_temp_'
+
+const warnedKeySubtypes = new Set<string>()
+
+/**
+ * Warn (once per subtype) when an `sb_` key isn't a subtype this SDK version recognizes.
+ * Never throws — the server, not the SDK, decides key validity. The key value is never
+ * included in the message.
+ */
+export const checkApiKeyFormat = (key: string): void => {
+  if (!key.startsWith('sb_') || isNewApiKey(key) || key.startsWith(TEMP_KEY_PREFIX)) {
+    return
+  }
+  const subtype = key.match(/^sb_[a-zA-Z0-9]+_/)?.[0] ?? 'unknown'
+  if (warnedKeySubtypes.has(subtype)) {
+    return
+  }
+  warnedKeySubtypes.add(subtype)
+  console.warn(
+    '@supabase/supabase-js: Unrecognized Supabase API key format. The client will proceed ' +
+      'and send this key as-is; if you see authentication errors you may need to upgrade ' +
+      '@supabase/supabase-js to a version that recognizes this key type.'
+  )
+}
+
+export const fetchWithAuth = (
+  supabaseKey: string,
+  supabaseUrl: string,
+  getAccessToken: () => Promise<string | null>,
+  customFetch?: Fetch,
+  tracePropagationOptions?: TracePropagationOptions,
+  options?: { omitApiKeyAsBearer?: boolean }
+): Fetch => {
+  const fetch = resolveFetch(customFetch)
+  const HeadersConstructor = resolveHeadersConstructor()
+
+  // Pre-compute trace propagation state once. When disabled, the per-request
+  // path skips all tracing work with a single truthy check.
+  const traceEnabled = tracePropagationOptions?.enabled === true
+  const respectSampling = tracePropagationOptions?.respectSamplingDecision !== false
+  const traceTargets: TracePropagationTarget[] | null = traceEnabled
+    ? getDefaultPropagationTargets(supabaseUrl)
+    : null
+
+  // Whether the API key may be used as the `Authorization` Bearer fallback when there is no
+  // session token. Disabled for Edge Functions with a new-format key (see `isNewApiKey`).
+  // Static per instance, so it is computed once here rather than on every request.
+  const allowKeyAsBearer = !(options?.omitApiKeyAsBearer && isNewApiKey(supabaseKey))
+
+  return async (input, init) => {
+    const realToken = await getAccessToken()
+    let headers = new HeadersConstructor(init?.headers)
+
+    if (!headers.has('apikey')) {
+      headers.set('apikey', supabaseKey)
+    }
+
+    if (!headers.has('Authorization')) {
+      const bearer = realToken ?? (allowKeyAsBearer ? supabaseKey : null)
+      if (bearer) {
+        headers.set('Authorization', `Bearer ${bearer}`)
+      }
+    }
+
+    if (traceTargets) {
+      const traceHeaders = getTraceHeaders(input, traceTargets, respectSampling)
+
+      if (traceHeaders) {
+        if (traceHeaders.traceparent && !headers.has('traceparent')) {
+          headers.set('traceparent', traceHeaders.traceparent)
+        }
+        if (traceHeaders.tracestate && !headers.has('tracestate')) {
+          headers.set('tracestate', traceHeaders.tracestate)
+        }
+        if (traceHeaders.baggage && !headers.has('baggage')) {
+          headers.set('baggage', traceHeaders.baggage)
+        }
+      }
+    }
+
+    return fetch(input, { ...init, headers })
+  }
+}
+
+let warnedMissingTracingRuntime = false
+let warnedNonW3CPropagator = false
+
+/**
+ * For tests only. Resets the one-time missing-tracing-runtime warning.
+ *
+ * @internal
+ */
+export function _resetTracingRuntimeWarning(): void {
+  warnedMissingTracingRuntime = false
+}
+
+/**
+ * For tests only. Resets the one-time non-W3C-propagator warning.
+ *
+ * @internal
+ */
+export function _resetNonW3CPropagatorWarning(): void {
+  warnedNonW3CPropagator = false
+}
+
+function getTraceHeaders(
+  input: RequestInfo | URL,
+  targets: TracePropagationTarget[],
+  respectSampling: boolean
+): TraceContext | null {
+  // Read the registry before the target check so the warning fires on the
+  // first request with tracing enabled, not only on Supabase-target ones.
+  // Reading per request (one globalThis property access) deliberately
+  // supports late registration: with ESM evaluation order, `createClient`
+  // can run in a module evaluated before the application entry point's
+  // `import '@supabase/supabase-js/tracing'`.
+  const extractTraceContext = getTraceContextExtractor()
+
+  if (!extractTraceContext) {
+    if (!warnedMissingTracingRuntime) {
+      warnedMissingTracingRuntime = true
+      console.warn(
+        '@supabase/supabase-js: tracePropagation is enabled but the tracing runtime is not loaded, ' +
+          "so trace headers will not be attached. Add `import '@supabase/supabase-js/tracing'` at " +
+          'your application entry point (requires the OpenTelemetry API package to be installed). ' +
+          'The CDN/UMD build does not support trace propagation.'
+      )
+    }
+    return null
+  }
+
+  const targetUrl: string | URL =
+    typeof input === 'string' ? input : input instanceof URL ? input : input.url
+
+  if (!shouldPropagateToTarget(targetUrl, targets)) {
+    return null
+  }
+
+  const traceContext = extractTraceContext()
+
+  if (!traceContext || !traceContext.traceparent) {
+    // An active propagator that writes vendor headers but no W3C
+    // `traceparent` (e.g. Sentry without `propagateTraceparent: true`) is
+    // otherwise indistinguishable from "no active trace" — warn once so the
+    // user learns why no trace headers are attached. An empty carrier means
+    // no active trace: normal, stay silent.
+    if (traceContext?.carrierKeys?.length && !warnedNonW3CPropagator) {
+      warnedNonW3CPropagator = true
+      const sentryHint = traceContext.carrierKeys.includes('sentry-trace')
+        ? ' Sentry detected: set `propagateTraceparent: true` in Sentry.init() to emit it.'
+        : ' Configure your tracing SDK to emit W3C trace context on outgoing requests.'
+      console.warn(
+        '@supabase/supabase-js: tracePropagation is enabled and a tracing SDK is active, but its ' +
+          `propagator wrote [${traceContext.carrierKeys.join(', ')}] and no W3C traceparent header, ` +
+          'so trace headers will not be attached.' +
+          sentryHint
+      )
+    }
+    return null
+  }
+
+  if (respectSampling) {
+    const parsed = parseTraceParent(traceContext.traceparent)
+    if (parsed && !parsed.isSampled) {
+      // Unsampled traces still carry `traceparent` so Supabase logs get a
+      // trace_id to correlate on; the flag stays `00`, so downstream tracing
+      // never records it as sampled. `tracestate` and `baggage` (the
+      // vendor/application data channels) are withheld on these requests.
+      return { traceparent: traceContext.traceparent }
+    }
+  }
+
+  return traceContext
 }

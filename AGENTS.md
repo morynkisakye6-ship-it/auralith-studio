@@ -1,6 +1,6 @@
-# Agent instructions for `@supabase/storage-js`
+# Agent instructions for `@supabase/supabase-js`
 
-Isomorphic storage client for Supabase. Handles bucket and object operations: upload, download, list, signed URLs, transformations.
+Main isomorphic Supabase client for JavaScript. Aggregates `@supabase/auth-js`, `@supabase/postgrest-js`, `@supabase/realtime-js`, `@supabase/storage-js`, and `@supabase/functions-js` into one client.
 
 When helping a user work with this package:
 
