@@ -2,8 +2,8 @@
 window.TAPEHEAD_CLOUD = {
   enabled: true,
   allowLocalFallback: false,
-  supabaseUrl: 'https://dswhlqropbraofcrsdcj.supabase.co',
-  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRzd2hscXJvcGJyYW9mY3JzZGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNjk1NjcsImV4cCI6MjEwNTg0NTU2N30.Le4_PkJw0BkCQndBc2fFblcxl_iiEcVdtoYVAwXPuiI',
+  supabaseUrl: 'https://aptigqyrixegqkppqjja.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdGlncXlyaXhlZ3FrcHBxamphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MzU1NDMsImV4cCI6MjEwNzUxMTU0M30.VOTTbtKquVjeTFAJrOtqIQElaQpYCyvpYwxsDaMvtyM',
   currency: 'USD',
   provider: 'pesapal',
   payApiUrl: '',
