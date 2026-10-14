@@ -1,62 +1,55 @@
 {
-  "name": "@supabase/functions-js",
-  "version": "2.117.3",
-  "description": "JS SDK to interact with Supabase Functions.",
-  "main": "dist/main/index.js",
-  "module": "dist/module/index.js",
-  "types": "dist/module/index.d.ts",
-  "sideEffects": false,
+  "name": "@supabase/phoenix",
+  "version": "0.4.5",
+  "description": "The official JavaScript client for the Phoenix web framework.",
+  "license": "MIT",
+  "module": "./priv/static/phoenix.mjs",
+  "main": "./priv/static/phoenix.cjs.js",
+  "types": "./priv/static/types/index.d.ts",
+  "unpkg": "./priv/static/phoenix.min.js",
+  "jsdelivr": "./priv/static/phoenix.min.js",
+  "exports": {
+    "import": {
+      "types": "./priv/static/types/index.d.ts",
+      "default": "./priv/static/phoenix.mjs"
+    },
+    "require": {
+      "types": "./priv/static/types/index.d.ts",
+      "default": "./priv/static/phoenix.cjs.js"
+    }
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/supabase/supabase-js.git",
-    "directory": "packages/core/functions-js"
+    "url": "git://github.com/supabase/phoenix.git"
   },
-  "keywords": [
-    "functions",
-    "supabase"
-  ],
-  "author": "Supabase",
+  "author": "Chris McCord <chris@chrismccord.com> (https://www.phoenixframework.org)",
   "files": [
-    "dist",
-    "src",
-    "migrations",
-    "AGENTS.md"
+    "README.md",
+    "LICENSE.md",
+    "package.json",
+    "tsconfig.json",
+    "priv/static/*",
+    "assets/js/phoenix/*"
   ],
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/supabase/supabase-js/issues"
-  },
-  "homepage": "https://github.com/supabase/supabase-js/tree/master/packages/core/functions-js",
-  "dependencies": {
-    "tslib": "2.8.1"
-  },
   "devDependencies": {
-    "@jest/types": "^30.0.0",
-    "@types/jest": "30.0.0",
-    "@types/jsonwebtoken": "^8.5.8",
-    "@types/node": "20.19.9",
-    "jest": "30.4.2",
-    "jsonwebtoken": "^9.0.0",
-    "nanoid": "^3.3.17",
-    "openai": "^4.52.5",
-    "testcontainers": "^8.5.1",
-    "ts-jest": "^29.4.9",
-    "typedoc": "^0.27.9",
-    "typescript": "~5.8.3"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "engines": {
-    "node": ">=22.0.0"
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.0.0",
+    "documentation": "^14.0.3",
+    "eslint": "10.6.0",
+    "eslint-plugin-jest": "29.15.4",
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0",
+    "jsdom": "^29.0.1",
+    "mock-socket": "^9.3.1",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "npm run build:main && npm run build:module",
-    "build:main": "tsc -p tsconfig.json",
-    "build:module": "tsc -p tsconfig.module.json",
-    "docs": "typedoc --options ../../../typedoc.base.mjs src/index.ts --out docs/v2",
-    "docs:json": "typedoc --options ../../../typedoc.base.mjs --json docs/v2/spec.json --excludeExternals src/index.ts",
-    "test": "jest",
-    "test:ci": "jest --coverage"
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test.coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
+    "test.watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
+    "build.types": "tsc",
+    "docs": "documentation build assets/js/phoenix/index.js -f html -o doc/js",
+    "lint": "eslint assets",
+    "lint:fix": "eslint --fix assets"
   }
 }

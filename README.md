@@ -1,138 +1,119 @@
-<br />
-<p align="center">
-  <a href="https://supabase.io">
-        <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/supabase-logo-wordmark--dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/supabase-logo-wordmark--light.svg">
-      <img alt="Supabase Logo" width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/logo-preview.jpg">
-    </picture>
-  </a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./priv/static/phoenix-orange.png" />
+  <source media="(prefers-color-scheme: light)" srcset="./priv/static/phoenix.png" />
+  <img src="./priv/static/phoenix.png" alt="Phoenix logo" />
+</picture>
 
-  <h1 align="center">Supabase Functions JS SDK</h1>
+> Peace of mind from prototype to production.
 
-  <h3 align="center">JavaScript SDK to interact with Supabase Edge Functions.</h3>
+[![Build Status](https://github.com/supabase/phoenix/workflows/CI/badge.svg)](https://github.com/supabase/phoenix/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/@supabase/phoenix.svg)](https://www.npmjs.com/package/@supabase/phoenix)
 
-  <p align="center">
-    <a href="https://supabase.com/docs/guides/functions">Guides</a>
-    ·
-    <a href="https://supabase.com/docs/reference/javascript/functions-invoke">Reference Docs</a>
-    ·
-    <a href="https://supabase.github.io/supabase-js/functions-js/v2/spec.json">TypeDoc</a>
-  </p>
-</p>
+## Supabase Fork
 
-<div align="center">
+This is a Supabase fork of Phoenix Framework, published to npm as `@supabase/phoenix`.
 
-[![Build](https://github.com/supabase/supabase-js/workflows/CI/badge.svg)](https://github.com/supabase/supabase-js/actions?query=branch%3Amaster)
-[![Package](https://img.shields.io/npm/v/@supabase/functions-js)](https://www.npmjs.com/package/@supabase/functions-js)
-[![License: MIT](https://img.shields.io/npm/l/@supabase/supabase-js)](#license)
-[![pkg.pr.new](https://pkg.pr.new/badge/supabase/functions-js)](https://pkg.pr.new/~/supabase/functions-js)
+**Installation:**
+```bash
+npm install @supabase/phoenix
+```
 
-</div>
+**Releases**: This fork uses automated releases via [release-please](https://github.com/googleapis/release-please). See [RELEASE.md](RELEASE.md) for details.
 
-## Requirements
+**Upstream**: Based on [phoenixframework/phoenix](https://github.com/phoenixframework/phoenix)
 
-- **Node.js 22 or later** (Node.js 20 support dropped in v2.110.0)
-- For browser support, all modern browsers are supported
+## Versioning
 
-> ⚠️ **Node.js 18 Deprecation Notice**
->
-> Node.js 18 reached end-of-life on April 30, 2025. As announced in [our deprecation notice](https://github.com/orgs/supabase/discussions/37217), support for Node.js 18 was dropped on October 31, 2025.
+This package uses **independent semantic versioning** for the JavaScript client.
 
-> ⚠️ **Node.js 20 Deprecation Notice**
->
-> Node.js 20 reached end-of-life on April 30, 2026. As announced in [our deprecation notice](https://github.com/orgs/supabase/discussions/45715), support for Node.js 20 was dropped in v2.110.0.
+- **Based on**: Phoenix Framework 1.8.3 JS client
+- **Last synced**: 2026-07-09
 
-## Quick Start
+We version based on **JS API changes only**, not upstream Phoenix framework releases.
+When we merge upstream Phoenix changes, we evaluate the JS API impact and version accordingly.
 
-### Installation
+## Getting started
+
+See the official site at <https://www.phoenixframework.org/>.
+
+Install the latest version of Phoenix by following the instructions at <https://phoenix.hexdocs.pm/installation.html#phoenix>.
+
+## Documentation
+
+API documentation is available at <https://phoenix.hexdocs.pm>.
+
+Phoenix.js documentation is available at <https://phoenix.hexdocs.pm/js>.
+
+## Contributing
+
+We appreciate any contribution to Phoenix. Check our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and [CONTRIBUTING.md](CONTRIBUTING.md) guides for more information. We usually keep a list of features and bugs in the [issue tracker][4].
+
+### Generating a Phoenix project from unreleased versions
+
+You can create a new project using the latest Phoenix source installer (the `phx.new` Mix task) with the following steps:
+
+1. Remove any previously installed `phx_new` archives so that Mix will pick up the local source code. This can be done with `mix archive.uninstall phx_new` or by simply deleting the file, which is usually in `~/.mix/archives/`.
+2. Copy this repo via `git clone https://github.com/phoenixframework/phoenix` or by downloading it
+3. Run the `phx.new` Mix task from within the `installer` directory, for example:
 
 ```bash
-npm install @supabase/functions-js
+cd phoenix/installer
+mix phx.new dev_app --dev
 ```
 
-### Usage
+The `--dev` flag will configure your new project's `:phoenix` dep as a relative path dependency, pointing to your local Phoenix checkout:
 
-```js
-import { FunctionsClient } from '@supabase/functions-js'
-
-const functionsUrl = 'https://<project_ref>.supabase.co/functions/v1'
-const publishableKey = '<publishable_key>'
-
-const functions = new FunctionsClient(functionsUrl, {
-  headers: {
-    Authorization: `Bearer ${publishableKey}`,
-  },
-})
-
-// Invoke a function
-const { data, error } = await functions.invoke('hello-world', {
-  body: { name: 'Functions' },
-})
+```elixir
+defp deps do
+  [{:phoenix, path: "../..", override: true},
 ```
 
-## Development
+To create projects outside of the `installer/` directory, add the latest archive to your machine by following the instructions in [installer/README.md](https://github.com/phoenixframework/phoenix/blob/main/installer/README.md)
 
-This package is part of the [Supabase JavaScript monorepo](https://github.com/supabase/supabase-js). To work on this package:
+### Building from source
 
-### Building
+To build the documentation:
 
 ```bash
-# Complete build (from monorepo root)
-pnpm nx build functions-js
-
-# Build with watch mode for development
-pnpm nx build functions-js --watch
-
-# Individual build targets
-pnpm nx build:main functions-js    # CommonJS build (dist/main/)
-pnpm nx build:module functions-js  # ES Modules build (dist/module/)
-
-# Other useful commands
-pnpm nx clean functions-js         # Clean build artifacts
-pnpm nx typecheck functions-js     # TypeScript type checking
-pnpm nx docs functions-js          # Generate documentation
+MIX_ENV=docs mix docs
 ```
 
-#### Build Outputs
-
-- **CommonJS (`dist/main/`)** - For Node.js environments
-- **ES Modules (`dist/module/`)** - For modern bundlers (Webpack, Vite, Rollup)
-- **TypeScript definitions (`dist/module/index.d.ts`)** - Type definitions for TypeScript projects
-
-### Testing
-
-**Docker Required** for relay tests. The functions-js tests use testcontainers to spin up a Deno relay server for testing Edge Function invocations.
+To build Phoenix:
 
 ```bash
-# Run all tests (from monorepo root)
-pnpm nx test functions-js
-
-# Run tests with coverage report
-pnpm nx test functions-js --coverage
-
-# Run tests in watch mode during development
-pnpm nx test functions-js --watch
-
-# CI test command (runs with coverage)
-pnpm nx test:ci functions-js
+mix deps.get
+mix compile
 ```
 
-#### Test Requirements
+To build the Phoenix installer:
 
-- **Node.js 22+** - Required for testcontainers
-- **Docker** - Must be installed and running for relay tests
-- No Supabase instance needed - Tests use mocked services and testcontainers
+```bash
+mix deps.get
+mix compile
+mix archive.build
+```
 
-#### What Gets Tested
+To build Phoenix.js:
 
-- **Function invocation** - Testing the `invoke()` method with various options
-- **Relay functionality** - Using a containerized Deno relay to test real Edge Function scenarios
-- **Error handling** - Ensuring proper error responses and retries
-- **Request/response models** - Validating headers, body, and response formats
+```bash
+mix assets.build
+```
 
-### Contributing
+## Important links
 
-We welcome contributions! Please see our [Contributing Guide](../../../CONTRIBUTING.md) for details on how to get started.
+* [#elixir][1] on [Libera][2] IRC
+* [elixir-lang Slack channel][3]
+* [Issues tracker][4]
+* [Phoenix Forum (questions and proposals)][5]
+* Visit Phoenix's sponsor, DockYard, for expert [Phoenix Consulting](https://dockyard.com/phoenix-consulting)
 
-For major changes or if you're unsure about something, please open an issue first to discuss your proposed changes.
+  [1]: https://web.libera.chat/?channels=#elixir
+  [2]: https://libera.chat/
+  [3]: https://elixir-lang.slack.com/
+  [4]: https://github.com/phoenixframework/phoenix/issues
+  [5]: https://elixirforum.com/c/phoenix-forum
+
+## Copyright and License
+
+Copyright (c) 2014, Chris McCord.
+
+Phoenix source code is licensed under the [MIT License](LICENSE.md).
