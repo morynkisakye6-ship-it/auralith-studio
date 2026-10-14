@@ -1,297 +1,439 @@
-<br />
-<p align="center">
-  <a href="https://supabase.io">
-        <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/supabase-logo-wordmark--dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/supabase-logo-wordmark--light.svg">
-      <img alt="Supabase Logo" width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/packages/common/assets/images/logo-preview.jpg">
-    </picture>
-  </a>
+# iceberg-js
 
-  <h1 align="center">Supabase JS SDK</h1>
+[![CI](https://github.com/supabase/iceberg-js/actions/workflows/ci.yml/badge.svg)](https://github.com/supabase/iceberg-js/actions/workflows/ci.yml)
+[![npm version](https://badge.fury.io/js/iceberg-js.svg)](https://www.npmjs.com/package/iceberg-js)
+[![pkg.pr.new](https://pkg.pr.new/badge/supabase/iceberg-js)](https://pkg.pr.new/~/supabase/iceberg-js)
 
-  <h3 align="center">Isomorphic JavaScript SDK for Supabase - combining Auth, Database, Storage, Functions, and Realtime.</h3>
+A small, framework-agnostic JavaScript/TypeScript client for the **Apache Iceberg REST Catalog**.
 
-  <p align="center">
-    <a href="https://supabase.com/docs/guides/getting-started">Guides</a>
-    ·
-    <a href="https://supabase.com/docs/reference/javascript/start">Reference Docs</a>
-    ·
-    <a href="https://supabase.github.io/supabase-js/supabase-js/v2/spec.json">TypeDoc</a>
-  </p>
-</p>
+## Features
 
-<div align="center">
+- **Generic**: Works with any Iceberg REST Catalog implementation, not tied to any specific vendor
+- **Minimal**: Thin HTTP wrapper over the official REST API, no engine-specific logic
+- **Type-safe**: First-class TypeScript support with strongly-typed request/response models
+- **Fetch-based**: Uses native `fetch` API with support for custom implementations
+- **Universal**: Targets Node 20+ and modern browsers (ES2020)
+- **Catalog-only**: Focused on catalog operations (no data reading/Parquet support in v0.1.0)
 
-[![Build](https://github.com/supabase/supabase-js/workflows/CI/badge.svg)](https://github.com/supabase/supabase-js/actions?query=branch%3Amaster)
-[![Package](https://img.shields.io/npm/v/@supabase/supabase-js)](https://www.npmjs.com/package/@supabase/supabase-js)
-[![License: MIT](https://img.shields.io/npm/l/@supabase/supabase-js)](#license)
-[![pkg.pr.new](https://pkg.pr.new/badge/supabase/supabase-js)](https://pkg.pr.new/~/supabase/supabase-js)
+## Documentation
 
-</div>
+📚 **Full API documentation**: [supabase.github.io/iceberg-js](https://supabase.github.io/iceberg-js/)
 
-## Usage
+## Installation
 
-First of all, you need to install the library:
-
-```sh
-npm install @supabase/supabase-js
+```bash
+npm install iceberg-js
 ```
 
-Then you're able to import the library and establish the connection with the database:
-
-```js
-import { createClient } from '@supabase/supabase-js'
-
-// Create a single supabase client for interacting with your database
-const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-```
-
-### UMD
-
-You can use plain `<script>`s to import supabase-js from CDNs, like:
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-```
-
-or even:
-
-```html
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-```
-
-Then you can use it from a global `supabase` variable:
-
-```html
-<script>
-  const { createClient } = supabase
-  const _supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-
-  console.log('Supabase Instance: ', _supabase)
-  // ...
-</script>
-```
-
-### ESM
-
-You can use `<script type="module">` to import supabase-js from CDNs, like:
-
-```html
-<script type="module">
-  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
-  const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-
-  console.log('Supabase Instance: ', supabase)
-  // ...
-</script>
-```
-
-### Deno
-
-You can use supabase-js in the Deno runtime via [JSR](https://jsr.io/@supabase/supabase-js):
-
-```js
-import { createClient } from 'jsr:@supabase/supabase-js@2'
-```
-
-### Custom `fetch` implementation
-
-`supabase-js` uses the runtime's global `fetch` to make HTTP requests, but an alternative `fetch` implementation can be provided as an option. This is useful in environments where the global `fetch` is unavailable or where you want to customize request behavior:
-
-```js
-import { createClient } from '@supabase/supabase-js'
-
-// Provide a custom `fetch` implementation as an option
-const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
-  global: {
-    fetch: (...args) => fetch(...args),
-  },
-})
-```
-
-### Distributed Tracing with OpenTelemetry
-
-The Supabase JS SDK can attach W3C/OpenTelemetry trace context headers (`traceparent`, `tracestate`, `baggage`) to outgoing requests, enabling end-to-end request tracing from your client application through Supabase services.
-
-Trace propagation is **opt-in** and disabled by default. When enabled, headers are only attached to requests targeting Supabase domains (`*.supabase.co`, `*.supabase.in`, `localhost`).
-
-#### Enable trace propagation
-
-Opting in takes two steps: install `@opentelemetry/api`, and load the tracing runtime by importing the `@supabase/supabase-js/tracing` subpath once at your application entry point. The main bundle contains no OpenTelemetry code — the subpath import is what wires it up.
-
-```js
-import '@supabase/supabase-js/tracing'
-import { createClient } from '@supabase/supabase-js'
-import { trace } from '@opentelemetry/api'
-
-const supabase = createClient('https://xyzcompany.supabase.co', 'public-anon-key', {
-  tracePropagation: true,
-})
-
-const tracer = trace.getTracer('my-app')
-await tracer.startActiveSpan('fetch-users', async (span) => {
-  // This request now includes the active trace context.
-  const { data, error } = await supabase.from('users').select('*')
-  span.end()
-})
-```
-
-The subpath imports `@opentelemetry/api` directly, so module resolution fails loudly if it is not installed. If `tracePropagation` is enabled without the subpath import, the SDK logs a one-time warning and sends requests without trace headers; if no active context exists at request time, it silently no-ops.
-
-Trace propagation is not available via the CDN/UMD build (`https://cdn.jsdelivr.net/.../supabase.js`) — there is no way to load the tracing runtime there.
-
-#### Advanced configuration
+## Quick Start
 
 ```typescript
-interface TracePropagationOptions {
-  // Enable trace propagation (default: false).
-  enabled?: boolean
+import { IcebergRestCatalog } from 'iceberg-js'
 
-  // Respect upstream sampling decisions (default: true).
-  // When true, non-sampled requests carry only `traceparent` (flag preserved,
-  // so nothing is recorded downstream) — Supabase logs still get a trace_id,
-  // while `tracestate` and `baggage` are withheld.
-  respectSamplingDecision?: boolean
-}
-```
-
-```js
-// Always propagate the full trace context, even for non-sampled traces.
-const supabase = createClient('https://xyzcompany.supabase.co', 'public-anon-key', {
-  tracePropagation: { enabled: true, respectSamplingDecision: false },
-})
-```
-
-## Support Policy
-
-This section outlines the scope of support for various runtime environments in Supabase JavaScript client.
-
-### Node.js
-
-We only support Node.js versions that are in **Active LTS** or **Maintenance** status as defined by the [official Node.js release schedule](https://nodejs.org/en/about/previous-releases#release-schedule). This means we support versions that are currently receiving long-term support and critical bug fixes.
-
-When a Node.js version reaches end-of-life and is no longer in Active LTS or Maintenance status, Supabase will drop it in a **minor release**, and **this won't be considered a breaking change**.
-
-> ⚠️ **Node.js 18 Deprecation Notice**
->
-> Node.js 18 reached end-of-life on April 30, 2025. As announced in [our deprecation notice](https://github.com/orgs/supabase/discussions/37217), support for Node.js 18 was dropped in version `2.79.0`.
->
-> If you must use Node.js 18, please use version `2.78.0`, which is the last version that supported Node.js 18.
-
-> ⚠️ **Node.js 20 Deprecation Notice**
->
-> Node.js 20 reached end-of-life on April 30, 2026. As announced in [our deprecation notice](https://github.com/orgs/supabase/discussions/45715), support for Node.js 20 was dropped in version `2.110.0`.
->
-> If you must use Node.js 20, please use version `2.109.0`, which is the last version that supported Node.js 20.
-
-### Deno
-
-We support Deno versions that are currently receiving active development and security updates. We follow the [official Deno release schedule](https://docs.deno.com/runtime/fundamentals/stability_and_releases/) and only support versions from the `stable` and `lts` release channels.
-
-When a Deno version reaches end-of-life and is no longer receiving security updates, Supabase will drop it in a **minor release**, and **this won't be considered a breaking change**.
-
-### Browsers
-
-All modern browsers are supported. We support browsers that provide native `fetch` API. For Realtime features, browsers must also support native `WebSocket` API.
-
-### Bun
-
-We support Bun runtime environments. Bun provides native fetch support and is compatible with Node.js APIs. Since Bun does not follow a structured release schedule like Node.js or Deno, we support current stable versions of Bun and may drop support for older versions in minor releases without considering it a breaking change.
-
-### React Native
-
-We support React Native environments with fetch polyfills provided by the framework. Since React Native does not follow a structured release schedule, we support current stable versions and may drop support for older versions in minor releases without considering it a breaking change.
-
-### Cloudflare Workers
-
-We support Cloudflare Workers runtime environments. Cloudflare Workers provides native fetch support. Since Cloudflare Workers does not follow a structured release schedule, we support current stable versions and may drop support for older versions in minor releases without considering it a breaking change.
-
-### Important Notes
-
-- **Experimental features**: Features marked as experimental may be removed or changed without notice
-
-## Known Build Warnings
-
-### `UNUSED_EXTERNAL_IMPORT` in Vite / Rollup / Nuxt
-
-When bundling your app, you may see warnings like:
-
-```
-"PostgrestError" is imported from external module "@supabase/postgrest-js" but never used in "...supabase-js/dist/index.mjs".
-"FunctionRegion", "FunctionsError", "FunctionsFetchError", "FunctionsHttpError" and "FunctionsRelayError" are imported from external module "@supabase/functions-js" but never used in "...".
-```
-
-**This is a false positive — your bundle is fine.** Here is why it happens:
-
-`@supabase/supabase-js` re-exports `PostgrestError`, `FunctionsError`, and related symbols so you can import them directly from `@supabase/supabase-js`. However, our build tool merges all imports from the same package into a single import statement in the built output:
-
-```js
-// dist/index.mjs (simplified)
-import { PostgrestClient, PostgrestError } from '@supabase/postgrest-js'
-//       ^ used internally    ^ re-exported for you
-```
-
-Your bundler checks which names from that import are used _in the code body_, and flags `PostgrestError` as unused because it only appears in an `export` statement — not called or assigned. The export itself is the usage, but downstream bundlers don't track this correctly. This is a known Rollup/Vite limitation with re-exported external imports.
-
-**Nothing is broken.** Tree-shaking and bundle size are unaffected.
-
-To suppress the warning:
-
-**Vite / Rollup (`vite.config.js` or `rollup.config.js`):**
-
-```js
-export default {
-  build: {
-    rollupOptions: {
-      onwarn(warning, warn) {
-        if (warning.code === 'UNUSED_EXTERNAL_IMPORT' && warning.exporter?.includes('@supabase/'))
-          return
-        warn(warning)
-      },
-    },
+const catalog = new IcebergRestCatalog({
+  baseUrl: 'https://my-catalog.example.com/iceberg/v1',
+  auth: {
+    type: 'bearer',
+    token: process.env.ICEBERG_TOKEN,
   },
-}
+})
+
+// Create a namespace
+await catalog.createNamespace({ namespace: ['analytics'] })
+
+// Create a table
+await catalog.createTable(
+  { namespace: ['analytics'] },
+  {
+    name: 'events',
+    schema: {
+      type: 'struct',
+      fields: [
+        { id: 1, name: 'id', type: 'long', required: true },
+        { id: 2, name: 'timestamp', type: 'timestamp', required: true },
+        { id: 3, name: 'user_id', type: 'string', required: false },
+      ],
+      'schema-id': 0,
+      'identifier-field-ids': [1],
+    },
+    'partition-spec': {
+      'spec-id': 0,
+      fields: [],
+    },
+    'write-order': {
+      'order-id': 0,
+      fields: [],
+    },
+    properties: {
+      'write.format.default': 'parquet',
+    },
+  }
+)
 ```
 
-**Nuxt (`nuxt.config.ts`):**
+## API Reference
 
-```ts
-export default defineNuxtConfig({
-  vite: {
-    build: {
-      rollupOptions: {
-        onwarn(warning, warn) {
-          if (warning.code === 'UNUSED_EXTERNAL_IMPORT' && warning.exporter?.includes('@supabase/'))
-            return
-          warn(warning)
+### Constructor
+
+#### `new IcebergRestCatalog(options)`
+
+Creates a new catalog client instance.
+
+**Options:**
+
+- `baseUrl` (string, required): Base URL of the REST catalog
+- `auth` (AuthConfig, optional): Authentication configuration
+- `catalogName` (string, optional): Catalog name for multi-catalog servers. When specified, requests are sent to `{baseUrl}/v1/{catalogName}/...`. For example, with `baseUrl: 'https://host.com'` and `catalogName: 'prod'`, requests go to `https://host.com/v1/prod/namespaces`
+- `fetch` (typeof fetch, optional): Custom fetch implementation
+- `accessDelegation` (AccessDelegation[], optional): Access delegation mechanisms to request from the server
+
+**Authentication types:**
+
+```typescript
+// No authentication
+{ type: 'none' }
+
+// Bearer token
+{ type: 'bearer', token: 'your-token' }
+
+// Custom header
+{ type: 'header', name: 'X-Custom-Auth', value: 'secret' }
+
+// Custom function
+{ type: 'custom', getHeaders: async () => ({ 'Authorization': 'Bearer ...' }) }
+```
+
+**Access Delegation:**
+
+Access delegation allows the catalog server to provide temporary credentials or sign requests on your behalf:
+
+```typescript
+import { IcebergRestCatalog } from 'iceberg-js'
+
+const catalog = new IcebergRestCatalog({
+  baseUrl: 'https://catalog.example.com/iceberg/v1',
+  auth: { type: 'bearer', token: 'your-token' },
+  // Request vended credentials for data access
+  accessDelegation: ['vended-credentials'],
+})
+
+// The server may return temporary credentials in the table metadata
+const metadata = await catalog.loadTable({ namespace: ['analytics'], name: 'events' })
+// Use credentials from metadata.config to access table data files
+```
+
+Supported delegation mechanisms:
+
+- `vended-credentials`: Server provides temporary credentials (e.g., AWS STS tokens) for accessing table data
+- `remote-signing`: Server signs data access requests on behalf of the client
+
+### Namespace Operations
+
+#### `listNamespaces(parent?: NamespaceIdentifier): Promise<NamespaceIdentifier[]>`
+
+List all namespaces, optionally under a parent namespace.
+
+```typescript
+const namespaces = await catalog.listNamespaces()
+// [{ namespace: ['default'] }, { namespace: ['analytics'] }]
+
+const children = await catalog.listNamespaces({ namespace: ['analytics'] })
+// [{ namespace: ['analytics', 'prod'] }]
+```
+
+#### `createNamespace(id: NamespaceIdentifier, metadata?: NamespaceMetadata): Promise<void>`
+
+Create a new namespace with optional properties.
+
+```typescript
+await catalog.createNamespace({ namespace: ['analytics'] }, { properties: { owner: 'data-team' } })
+```
+
+#### `dropNamespace(id: NamespaceIdentifier): Promise<void>`
+
+Drop a namespace. The namespace must be empty.
+
+```typescript
+await catalog.dropNamespace({ namespace: ['analytics'] })
+```
+
+#### `loadNamespaceMetadata(id: NamespaceIdentifier): Promise<NamespaceMetadata>`
+
+Load namespace metadata and properties.
+
+```typescript
+const metadata = await catalog.loadNamespaceMetadata({ namespace: ['analytics'] })
+// { properties: { owner: 'data-team', ... } }
+```
+
+### Table Operations
+
+#### `listTables(namespace: NamespaceIdentifier): Promise<TableIdentifier[]>`
+
+List all tables in a namespace.
+
+```typescript
+const tables = await catalog.listTables({ namespace: ['analytics'] })
+// [{ namespace: ['analytics'], name: 'events' }]
+```
+
+#### `createTable(namespace: NamespaceIdentifier, request: CreateTableRequest): Promise<TableMetadata>`
+
+Create a new table.
+
+```typescript
+const metadata = await catalog.createTable(
+  { namespace: ['analytics'] },
+  {
+    name: 'events',
+    schema: {
+      type: 'struct',
+      fields: [
+        { id: 1, name: 'id', type: 'long', required: true },
+        { id: 2, name: 'timestamp', type: 'timestamp', required: true },
+      ],
+      'schema-id': 0,
+    },
+    'partition-spec': {
+      'spec-id': 0,
+      fields: [
+        {
+          source_id: 2,
+          field_id: 1000,
+          name: 'ts_day',
+          transform: 'day',
         },
-      },
+      ],
     },
-  },
+  }
+)
+```
+
+#### `loadTable(id: TableIdentifier): Promise<TableMetadata>`
+
+Load table metadata.
+
+```typescript
+const metadata = await catalog.loadTable({
+  namespace: ['analytics'],
+  name: 'events',
 })
+```
+
+#### `updateTable(id: TableIdentifier, request: UpdateTableRequest): Promise<TableMetadata>`
+
+Update table metadata (schema, partition spec, or properties).
+
+```typescript
+const updated = await catalog.updateTable(
+  { namespace: ['analytics'], name: 'events' },
+  {
+    properties: { 'read.split.target-size': '134217728' },
+  }
+)
+```
+
+#### `dropTable(id: TableIdentifier): Promise<void>`
+
+Drop a table from the catalog.
+
+```typescript
+await catalog.dropTable({ namespace: ['analytics'], name: 'events' })
+```
+
+## Error Handling
+
+All API errors throw an `IcebergError` with details from the server:
+
+```typescript
+import { IcebergError } from 'iceberg-js'
+
+try {
+  await catalog.loadTable({ namespace: ['test'], name: 'missing' })
+} catch (error) {
+  if (error instanceof IcebergError) {
+    console.log(error.status) // 404
+    console.log(error.icebergType) // 'NoSuchTableException'
+    console.log(error.message) // 'Table does not exist'
+  }
+}
+```
+
+## TypeScript Types
+
+The library exports all relevant types:
+
+```typescript
+import type {
+  NamespaceIdentifier,
+  TableIdentifier,
+  TableSchema,
+  TableField,
+  IcebergType,
+  PartitionSpec,
+  SortOrder,
+  CreateTableRequest,
+  TableMetadata,
+  AuthConfig,
+  AccessDelegation,
+} from 'iceberg-js'
+```
+
+## Supported Iceberg Types
+
+The following Iceberg primitive types are supported:
+
+- `boolean`, `int`, `long`, `float`, `double`
+- `string`, `uuid`, `binary`
+- `date`, `time`, `timestamp`, `timestamptz`
+- `decimal(precision, scale)`, `fixed(length)`
+
+## Compatibility
+
+This package is built to work in **all** Node.js and JavaScript environments:
+
+| Environment         | Module System        | Import Method                           | Status                |
+| ------------------- | -------------------- | --------------------------------------- | --------------------- |
+| Node.js ESM         | `"type": "module"`   | `import { ... } from 'iceberg-js'`      | ✅ Fully supported    |
+| Node.js CommonJS    | Default              | `const { ... } = require('iceberg-js')` | ✅ Fully supported    |
+| TypeScript ESM      | `module: "ESNext"`   | `import { ... } from 'iceberg-js'`      | ✅ Full type support  |
+| TypeScript CommonJS | `module: "CommonJS"` | `import { ... } from 'iceberg-js'`      | ✅ Full type support  |
+| Bundlers            | Any                  | Webpack, Vite, esbuild, Rollup, etc.    | ✅ Auto-detected      |
+| Browsers            | ESM                  | `<script type="module">`                | ✅ Modern browsers    |
+| Deno                | ESM                  | `import` from npm:                      | ✅ With npm specifier |
+
+**Package exports:**
+
+- ESM: `dist/index.mjs` with `dist/index.d.ts`
+- CommonJS: `dist/index.cjs` with `dist/index.d.cts`
+- Proper `exports` field for Node.js 12+ module resolution
+
+All scenarios are tested in CI on Node.js 20 and 22.
+
+## Browser Usage
+
+The library works in modern browsers that support native `fetch`:
+
+```typescript
+import { IcebergRestCatalog } from 'iceberg-js'
+
+const catalog = new IcebergRestCatalog({
+  baseUrl: 'https://public-catalog.example.com/iceberg/v1',
+  auth: { type: 'none' },
+})
+
+const namespaces = await catalog.listNamespaces()
+```
+
+## Node.js Usage
+
+Node.js 20+ includes native `fetch` support. For older versions, provide a custom fetch implementation:
+
+```typescript
+import { IcebergRestCatalog } from 'iceberg-js'
+import fetch from 'node-fetch'
+
+const catalog = new IcebergRestCatalog({
+  baseUrl: 'https://catalog.example.com/iceberg/v1',
+  auth: { type: 'bearer', token: 'token' },
+  fetch: fetch as any,
+})
+```
+
+## Limitations (v0.1.0)
+
+This is a catalog client only. The following are **not supported**:
+
+- Reading table data (scanning Parquet files)
+- Writing data to tables
+- Advanced table operations (commits, snapshots, time travel)
+- Views support
+- Multi-table transactions
+
+## Development
+
+```bash
+# Install dependencies
+pnpm install
+
+# Build the library
+pnpm run build
+
+# Run unit tests
+pnpm test
+
+# Run integration tests (requires Docker)
+pnpm test:integration
+
+# Run integration tests with cleanup (for CI)
+pnpm test:integration:ci
+
+# Run compatibility tests (all module systems)
+pnpm test:compatibility
+
+# Format code
+pnpm run format
+
+# Lint and test
+pnpm run check
+```
+
+### Testing with Docker
+
+Integration tests run against a local Iceberg REST Catalog in Docker. See [TESTING-DOCKER.md](./test/integration/TESTING-DOCKER.md) for details.
+
+```bash
+# Start Docker services and run integration tests
+pnpm test:integration
+
+# Or manually
+docker compose up -d
+npx tsx test/integration/test-local-catalog.ts
+docker compose down -v
+```
+
+### Compatibility Testing
+
+The `test:compatibility` script verifies the package works correctly in all JavaScript/TypeScript environments:
+
+- **Pure JavaScript ESM** - Projects with `"type": "module"`
+- **Pure JavaScript CommonJS** - Traditional Node.js projects
+- **TypeScript ESM** - TypeScript with `module: "ESNext"`
+- **TypeScript CommonJS** - TypeScript with `module: "CommonJS"`
+
+These tests ensure proper module resolution, type definitions, and runtime behavior across all supported environments. See [test/compatibility/README.md](./test/compatibility/README.md) for more details.
+
+## License
+
+MIT
+
+## Releases
+
+This project uses [release-please](https://github.com/googleapis/release-please) for automated releases. Here's how it works:
+
+1. **Commit with conventional commits**: Use [Conventional Commits](https://www.conventionalcommits.org/) format for your commits:
+   - `feat:` for new features (minor version bump)
+   - `fix:` for bug fixes (patch version bump)
+   - `feat!:` or `BREAKING CHANGE:` for breaking changes (major version bump)
+   - `chore:`, `docs:`, `test:`, etc. for non-release commits
+
+2. **Release PR is created automatically**: When you push to `main`, release-please creates/updates a release PR with:
+   - Version bump in `package.json`
+   - Updated `CHANGELOG.md`
+   - Release notes
+
+3. **Merge the release PR**: When you're ready to release, merge the PR. This will:
+   - Create a GitHub release and git tag
+   - Automatically publish to npm with provenance (using trusted publishing, no secrets needed)
+
+**Example commits:**
+
+```bash
+git commit -m "feat: add support for view operations"
+git commit -m "fix: handle empty namespace list correctly"
+git commit -m "feat!: change auth config structure"
 ```
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](../../../CONTRIBUTING.md) for details on how to get started.
-
-For major changes or if you're unsure about something, please open an issue first to discuss your proposed changes.
-
-### Building
-
-```bash
-# From the monorepo root
-pnpm nx build supabase-js
-
-# Or with watch mode for development
-pnpm nx build supabase-js --watch
-```
-
-### Testing
-
-There's a complete guide on how to set up your environment for running locally the `supabase-js` integration tests. Please refer to [TESTING.md](./TESTING.md).
-
-## Badges
-
-[![Coverage Status](https://coveralls.io/repos/github/supabase/supabase-js/badge.svg?branch=master)](https://coveralls.io/github/supabase/supabase-js?branch=master)
+Contributions are welcome! This library aims to be a minimal, generic client for the Iceberg REST Catalog API.
