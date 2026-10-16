@@ -1,0 +1,32 @@
+{
+  "appId": "com.tapehead.pro",
+  "appName": "Tapehead",
+  "webDir": "native-shell",
+  "server": {
+    "url": "https://tapehead-pro-phi.vercel.app",
+    "cleartext": false,
+    "allowNavigation": [
+      "tapehead-pro-phi.vercel.app",
+      "*.supabase.co",
+      "*.pesapal.com"
+    ]
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0A0A0C",
+    "limitsNavigationsToAppBoundDomains": false,
+    "preferredContentMode": "mobile"
+  },
+  "android": {
+    "backgroundColor": "#0A0A0C",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#0A0A0C",
+      "showSpinner": false
+    }
+  }
+}
