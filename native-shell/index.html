@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><title>Auralith Studio</title>
+<style>html,body{height:100%;margin:0;background:#0A0A0C;color:#D9DEDB;font-family:-apple-system,system-ui,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px}
+h1{color:#E2A066;font-size:22px;margin:0}p{color:#8D9693;font-size:14px;margin:0;max-width:280px;line-height:1.5}
+button{margin-top:8px;background:#C47A45;color:#0A0A0C;border:0;border-radius:999px;padding:12px 26px;font-size:15px;font-weight:600}</style>
+<style id="native-mobile-safe-area">
+html,body{min-height:100dvh;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{box-sizing:border-box;padding:
+max(24px,env(safe-area-inset-top,0px))
+max(20px,env(safe-area-inset-right,0px))
+max(24px,env(safe-area-inset-bottom,0px))
+max(20px,env(safe-area-inset-left,0px))}
+button{touch-action:manipulation;min-height:44px}
+</style>
+</head>
+<body><h1>Auralith Studio</h1><p id="m">Connecting to your studio…</p>
+<button id="r" hidden onclick="location.reload()">Try again</button>
+<script>
+/* Shown only if the hosted app cannot be reached (e.g. first launch with no connection). */
+setTimeout(function(){document.getElementById('m').textContent='Auralith Studio needs an internet connection to open. Check your connection and try again.';document.getElementById('r').hidden=false;},6000);
+</script></body></html>
