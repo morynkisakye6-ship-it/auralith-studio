@@ -1,0 +1,7 @@
+# Keep test code, security notes and DB migrations out of the public deployment.
+tests/
+e2e/
+scripts/
+supabase/
+SECURITY-HARDENING-*.md
+node_modules/
